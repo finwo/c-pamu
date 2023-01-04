@@ -1,0 +1,3 @@
+[submodule "lib/tinytest"]
+	path = lib/tinytest
+	url = https://github.com/joewalnes/tinytest
