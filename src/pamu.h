@@ -14,6 +14,8 @@
 #define  PAMU_ERR_NEGATIVE_SIZE        (-3)
 #define  PAMU_ERR_READ_MALFORMED       (-4)
 #define  PAMU_ERR_MEDIUM_UNINITIALIZED (-5)
+#define  PAMU_ERR_MEDIUM_FULL          (-6)
+#define  PAMU_ERR_WRITE                (-7)
 
 // In-file structure
 //   header:

@@ -6,10 +6,6 @@ CFLAGS?=
 CFLAGS+=-Wall
 CFLAGS+=-Isrc
 
-# Add lib/tinytest
-LIBS+=lib/tinytest
-CFLAGS+=-Ilib/tinytest
-
 # Which objects to generate before merging everything together
 OBJ:=$(SRC:.c=.o)
 
@@ -22,7 +18,7 @@ $(LIBS):
 %.o: %.c $(LIBS)
 	$(CC) $(CFLAGS) $(@:.o=.c) -c -o $@
 
-test: $(OBJ)
+test: $(OBJ) test.h
 	$(CC) $(CFLAGS) $(OBJ) -o $@
 
 .PHONY: clean
