@@ -21,15 +21,15 @@
 //   header:
 //     "PAMU"     Keyword           To check if an FD was already initialized
 //     uint32_t   flags|headerSize  Feature flags + size of the header on medium
-//     uint64_t   managedSpace      Amount of library-managed bytes on medium
 //   entry_free:
 //     uint64_t   free|size         Free marker/flag + size of the entry
+//     uint64_t   pointer           Pointer to the previous free entry
 //     uint64_t   pointer           Pointer to the next free entry
 //     char[]     blob              Unused space
 //     uint64_t   free|size         Free marker/flag + size of the entry
 //   entry_allocated:
 //     uint64_t   size              Size of the entry
-//     char[8+]   blob              Application data
+//     char[16+]  blob              Application data
 //     uint64_t   size              Size of the entry
 
 // Open/close functionality

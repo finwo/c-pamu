@@ -24,7 +24,7 @@
 struct pamu_medium_stat {
   uint32_t flags;
   uint32_t headerSize;
-  uint64_t managedBytes;
+  uint64_t mediumSize;
 };
 
 // Uses outer address
@@ -64,6 +64,7 @@ int64_t _pamu_find_free_block(int fd, int64_t start, int64_t limit, int64_t size
   int64_t cflags  = 0;
 
   while(
+    current &&
     (current < limit)
   ) {
     csize  = _pamu_find_size(fd, current);
@@ -85,18 +86,18 @@ int64_t _pamu_find_free_block(int fd, int64_t start, int64_t limit, int64_t size
     if (csize >= size) return current;
 
     // Skip to the next free block
-    if (lseek(fd, current + sizeof(int64_t), SEEK_SET) != current + sizeof(int64_t)) {
+    if (lseek(fd, current + (2*sizeof(int64_t)), SEEK_SET) != current + sizeof(int64_t)) {
       return PAMU_ERR_READ_MALFORMED;
     }
     if (read(fd, &current, sizeof(int64_t)) != sizeof(int64_t)) {
       return PAMU_ERR_READ_MALFORMED;
     }
-
-    // 0 = last free block, return the limit
-    return limit;
   }
 
-  if (current >= limit) {
+  if (
+    (current == 0) &&
+    (current >= limit)
+  ) {
     return limit;
   }
 
@@ -136,14 +137,8 @@ struct pamu_medium_stat * _pamu_medium_stat(int fd) {
   response->flags      = iFlaggedHeaderSize &  PAMU_FLAGS;
   response->headerSize = iFlaggedHeaderSize & ~PAMU_FLAGS;
 
-  // Read managedBytes
-  uint64_t beManagedBytes;
-  rc = read(fd, &beManagedBytes, sizeof(uint64_t));
-  if (rc != sizeof(uint64_t)) {
-    free(response);
-    return (void*)PAMU_ERR_READ_MALFORMED;
-  }
-  response->managedBytes = be64toh(beManagedBytes);
+  // Find medium size
+  response->mediumSize = lseek(fd, 0, SEEK_END);
 
   return response;
 }
@@ -162,6 +157,7 @@ int pamu_init(int fd, uint32_t flags) {
   // "calculate" entry size
   uint32_t iEntrySize =
     sizeof(uint64_t) + // Start size indicator
+    sizeof(uint64_t) + // Previous free pointer in empty records
     sizeof(uint64_t) + // Next free pointer in empty records
     sizeof(uint64_t) + // End size indicator
     0;
@@ -188,9 +184,19 @@ int pamu_init(int fd, uint32_t flags) {
   uint32_t beHeaderSize = htobe32(flags | iHeaderSize);
   write(fd, &beHeaderSize, sizeof(uint32_t));
 
-  // Write uint64_t managedSpace (same as headersize here)
-  uint64_t beManagedSpace = htobe64((uint64_t)iHeaderSize);
-  write(fd, &beManagedSpace, sizeof(uint64_t));
+  // Initialize medium as free blob
+  int64_t mediumSize = lseek(fd, 0, SEEK_END);
+  int64_t blobSize   = mediumSize - iHeaderSize - (2 * sizeof(int64_t));
+  int64_t blobMarker = htobe64(blobSize | PAMU_INTERNAL_FLAG_FREE);
+  int64_t zero       = 0;
+  if (!(flags & PAMU_DYNAMIC)) {
+    lseek(fd, iHeaderSize, SEEK_SET);
+    write(fd, &blobMarker, sizeof(int64_t)); // Start marker
+    write(fd, &zero      , sizeof(int64_t)); // Previous pointer
+    write(fd, &zero      , sizeof(int64_t)); // Next Pointer
+    lseek(fd, iHeaderSize + blobSize + sizeof(int64_t), SEEK_SET);
+    write(fd, &blobMarker, sizeof(int64_t)); // End marker
+  }
 
   return 0;
 }
@@ -198,14 +204,15 @@ int pamu_init(int fd, uint32_t flags) {
 // Returns inner address or error
 int64_t pamu_alloc(int fd, int64_t size) {
   if (size <= 0) return PAMU_ERR_NEGATIVE_SIZE;
-  if (size < sizeof(int64_t)) size = sizeof(int64_t);
+  if (size < (2*sizeof(int64_t))) size = sizeof(int64_t);
 
   // Fetch info (or return error code)
   struct pamu_medium_stat *stat = _pamu_medium_stat(fd);
   if (stat < 0) return (int64_t)stat;
 
   // Find a pre-existing block with the correct size (or throw error)
-  int64_t block = _pamu_find_free_block(fd, stat->headerSize, stat->managedBytes, size);
+  int64_t block = _pamu_find_free_block(fd, stat->headerSize, stat->mediumSize, size);
+  fprintf(stderr, "block       : %ld\n", block);
 
   // Error during finding
   if (block < 0) {
@@ -215,20 +222,29 @@ int64_t pamu_alloc(int fd, int64_t size) {
 
   // Throw error if non-dynamic & no space available
   if (
-    (block == stat->managedBytes) &&
+    (block + (2*sizeof(int64_t)) + size >= stat->mediumSize) &&
     (!(stat->flags & PAMU_DYNAMIC))
   ) {
     free(stat);
     return PAMU_ERR_MEDIUM_FULL;
   }
 
-  // Here = dynamic
+  // Here = got the space
 
-  // Fetch block size (fetch or build new)
-  int64_t blockSize = block == stat->managedBytes
+  // Fetch or build block size
+  int64_t blockSize = block == stat->mediumSize
     ? size
     : _pamu_find_size(fd, block);
-  int64_t blockEnd = block + sizeof(int64_t) + size;
+
+  /* // Possibly split free block */
+  /* int64_t freePointer; */
+  /* lseek(fd, block + sizeof(int64_t), SEEK_SET); */
+  /* read(fd, &freePointer, sizeof(int64_t)); */
+  /* if ((blockSize - size) > (3 * sizeof(int64_t))) { */
+  /* } */
+
+  // Build rest of the block statistics
+  int64_t blockEnd = block + sizeof(int64_t) + blockSize;
   int64_t beBlockSize = htobe64(blockSize);
 
   // Write start marker
@@ -249,23 +265,6 @@ int64_t pamu_alloc(int fd, int64_t size) {
   if(write(fd, &beBlockSize, sizeof(int64_t)) != sizeof(int64_t)) {
     free(stat);
     return PAMU_ERR_WRITE;
-  }
-
-  // Update managed bytes in header
-  int64_t managedBytesOffset   = PAMU_KEYWORD_LEN + sizeof(uint32_t);
-  int64_t managedBytes         = MAX(blockEnd + sizeof(int64_t), stat->managedBytes);
-  int64_t beManagedBytes       = htobe64(managedBytes);
-
-  if (block == stat->managedBytes) {
-    // Write new managedBytes
-    if (lseek(fd, managedBytesOffset, SEEK_SET) != managedBytesOffset) {
-      free(stat);
-      return PAMU_ERR_SEEK;
-    }
-    if(write(fd, &beManagedBytes, sizeof(int64_t)) != sizeof(int64_t)) {
-      free(stat);
-      return PAMU_ERR_WRITE;
-    }
   }
 
   free(stat);
