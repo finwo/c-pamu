@@ -19,6 +19,8 @@
 #define  PAMU_INTERNAL_FLAG_FREE  ((int64_t)1<<63)
 #define  PAMU_INTERNAL_FLAGS      (PAMU_INTERNAL_FLAG_FREE)
 
+#define MAX(a,b) ((a)>(b)?(a):(b))
+
 struct pamu_medium_stat {
   uint32_t flags;
   uint32_t headerSize;
@@ -91,6 +93,10 @@ int64_t _pamu_find_free_block(int fd, int64_t start, int64_t limit, int64_t size
     }
 
     // 0 = last free block, return the limit
+    return limit;
+  }
+
+  if (current >= limit) {
     return limit;
   }
 
@@ -246,15 +252,17 @@ int64_t pamu_alloc(int fd, int64_t size) {
   }
 
   // Update managed bytes in header
-  int64_t managedBytesOffset = PAMU_KEYWORD_LEN + sizeof(uint32_t);
-  int64_t beManagedBytesOffset = htobe64(managedBytesOffset);
+  int64_t managedBytesOffset   = PAMU_KEYWORD_LEN + sizeof(uint32_t);
+  int64_t managedBytes         = MAX(blockEnd + sizeof(int64_t), stat->managedBytes);
+  int64_t beManagedBytes       = htobe64(managedBytes);
+
   if (block == stat->managedBytes) {
     // Write new managedBytes
     if (lseek(fd, managedBytesOffset, SEEK_SET) != managedBytesOffset) {
       free(stat);
       return PAMU_ERR_SEEK;
     }
-    if(write(fd, &beManagedBytesOffset, sizeof(int64_t)) != sizeof(int64_t)) {
+    if(write(fd, &beManagedBytes, sizeof(int64_t)) != sizeof(int64_t)) {
       free(stat);
       return PAMU_ERR_WRITE;
     }

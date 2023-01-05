@@ -45,6 +45,7 @@ void test_init_dynamic() {
   // Remove the temporary file
   close(fd);
   unlink(tempfile);
+  free(tempfile);
 }
 
 void test_init_static() {
@@ -86,10 +87,37 @@ void test_init_static() {
   // Remove the temporary file
   close(fd);
   unlink(tempfile);
+  free(tempfile);
 }
 
 void test_alloc_dynamic() {
-  // TODO: write test here
+
+  // Open tmp file
+  char * tempfile = calloc(1,strlen(temptemplate)+strlen(tempfolder)+2);
+  strcat(tempfile, tempfolder);
+  strcat(tempfile, "/");
+  strcat(tempfile, temptemplate);
+  int fd = mkstemp(tempfile);
+
+  // Basic initialize
+  int rc = pamu_init(fd, PAMU_DEFAULT | PAMU_DYNAMIC);
+  ASSERT("Medium initialized without errors", rc == 0); // Expect no errors
+
+  // Initial allocate
+  int64_t addr_0 = pamu_alloc(fd, 64);
+
+  ASSERT("1st allocation does not return an error", addr_0 >  0);
+  ASSERT("1st allocation is done right after the header", addr_0 == 24);
+  int64_t addr_1 = pamu_alloc(fd, 64);
+  ASSERT("2nd allocation does not return an error", addr_1 > 0);
+  ASSERT("2nd allocation is done right after the 1st alloc", addr_1 == 104);
+
+  ASSERT("2 consecutive allocations must not be the same", addr_0 != addr_1);
+
+  // Remove the temporary file
+  close(fd);
+  unlink(tempfile);
+  free(tempfile);
 }
 
 void test_alloc_static() {
@@ -105,7 +133,7 @@ int main() {
   RUN(test_init_dynamic);
   RUN(test_init_static);
 
-  /* RUN(test_alloc_dynamic); */
+  RUN(test_alloc_dynamic);
   /* RUN(test_alloc_static); */
 
   return TEST_REPORT();
