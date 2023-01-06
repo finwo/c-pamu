@@ -72,7 +72,7 @@ int64_t _pamu_find_free_block(int fd, int64_t start, int64_t limit, int64_t size
 
     // Return errors
     if (csize  < 0) return csize;  // Error = return error
-    if (cflags < 0) return cflags; // Error = return error
+    if (cflags & (~PAMU_INTERNAL_FLAGS)) return cflags; // Error = return error
 
     // If not free, go to the next entry
     if (!(cflags & PAMU_INTERNAL_FLAG_FREE)) {
@@ -151,7 +151,6 @@ int pamu_init(int fd, uint32_t flags) {
   uint32_t iHeaderSize =
     PAMU_KEYWORD_LEN  + // Keyword
     sizeof(uint32_t ) + // Headersize + flags
-    sizeof(uint64_t ) + // managedSpace
     0;
 
   // "calculate" entry size
@@ -220,7 +219,7 @@ int64_t pamu_alloc(int fd, int64_t size) {
     return block;
   }
 
-  // Throw error if non-dynamic & no space available
+  // Throw error if non-dynamic & not enough space
   if (
     (block + (2*sizeof(int64_t)) + size >= stat->mediumSize) &&
     (!(stat->flags & PAMU_DYNAMIC))
@@ -232,40 +231,90 @@ int64_t pamu_alloc(int fd, int64_t size) {
   // Here = got the space
 
   // Fetch or build block size
+  int64_t blockMarker;
   int64_t blockSize = block == stat->mediumSize
     ? size
     : _pamu_find_size(fd, block);
 
-  /* // Possibly split free block */
-  /* int64_t freePointer; */
-  /* lseek(fd, block + sizeof(int64_t), SEEK_SET); */
-  /* read(fd, &freePointer, sizeof(int64_t)); */
-  /* if ((blockSize - size) > (3 * sizeof(int64_t))) { */
+  // Split free block if large enough
+  int64_t previousFree;
+  int64_t nextFree;
+  int64_t newFree;
+  int64_t newFreeSize;
+  int64_t newFreeSizeFlags;
+  int64_t beBlock = htobe64(block);
+  if ((blockSize - size) > (4 * sizeof(int64_t))) {
+    lseek(fd, block + sizeof(int64_t), SEEK_SET);
+    read(fd, &previousFree, sizeof(int64_t));
+    read(fd, &nextFree, sizeof(int64_t));
+
+    newFree          = htobe64( block     + size + (2 * sizeof(int64_t))                           );
+    newFreeSize      =          blockSize - size - (2 * sizeof(int64_t));
+    newFreeSizeFlags = htobe64(newFreeSize | PAMU_INTERNAL_FLAG_FREE);
+
+    // Update the current block
+    blockSize   = size;
+    blockMarker = htobe64(blockSize | PAMU_INTERNAL_FLAG_FREE);
+    lseek(fd, block, SEEK_SET);
+    write(fd, &blockMarker , sizeof(int64_t)); // Start marker
+    write(fd, &previousFree, sizeof(int64_t)); // Previous free
+    write(fd, &newFree     , sizeof(int64_t)); // Next/new free
+    lseek(fd, block + size + sizeof(int64_t), SEEK_SET);
+    write(fd, &blockMarker , sizeof(int64_t)); // End marker
+
+    // Build new free block
+    write(fd, &newFreeSizeFlags, sizeof(int64_t)); // Start marker
+    write(fd, &beBlock         , sizeof(int64_t)); // Previous/current free
+    write(fd, &nextFree        , sizeof(int64_t)); // Next free
+    lseek(fd, be64toh(newFree) + newFreeSize + sizeof(int64_t), SEEK_SET);
+    write(fd, &newFreeSizeFlags, sizeof(int64_t)); // End marker
+
+    // Update next block to point it's previous to the new free
+    if (nextFree) {
+      lseek(fd, be64toh(nextFree) + sizeof(int64_t), SEEK_SET);
+      write(fd, &newFree                           , sizeof(int64_t));
+    }
+  }
+
+  /* // Grow medium in dynamic mode */
+  /* if ( */
+  /*   (stat->flags & PAMU_DYNAMIC) && */
+  /*   (block == stat->mediumSize) */
+  /* ) { */
   /* } */
 
-  // Build rest of the block statistics
-  int64_t blockEnd = block + sizeof(int64_t) + blockSize;
-  int64_t beBlockSize = htobe64(blockSize);
 
-  // Write start marker
-  if(lseek(fd, block, SEEK_SET) != block) {
-    free(stat);
-    return PAMU_ERR_SEEK;
-  }
-  if(write(fd, &beBlockSize, sizeof(int64_t)) != sizeof(int64_t)) {
-    free(stat);
-    return PAMU_ERR_WRITE;
-  }
+  /* int64_t previousFree; */
+  /* int64_t nextFree; */
+  /* if ((blockSize - size) > (4 * sizeof(int64_t))) { */
+  /*   // Split this block */
+  /* } else { */
+  /*   // Assign this block */
+  /* } */
 
-  // Write end marker
-  if(lseek(fd, blockEnd, SEEK_SET) != blockEnd) {
-    free(stat);
-    return PAMU_ERR_SEEK;
-  }
-  if(write(fd, &beBlockSize, sizeof(int64_t)) != sizeof(int64_t)) {
-    free(stat);
-    return PAMU_ERR_WRITE;
-  }
+  /* // Build rest of the block statistics */
+  /* int64_t blockEnd = block + sizeof(int64_t) + blockSize; */
+  /* int64_t beBlockSize = htobe64(blockSize); */
+
+  /* // Write start marker */
+  /* if(lseek(fd, block, SEEK_SET) != block) { */
+  /*   free(stat); */
+  /*   return PAMU_ERR_SEEK; */
+  /* } */
+  /* if(write(fd, &beBlockSize, sizeof(int64_t)) != sizeof(int64_t)) { */
+  /*   free(stat); */
+  /*   return PAMU_ERR_WRITE; */
+  /* } */
+
+  /* // Write end marker */
+  /* if(lseek(fd, blockEnd, SEEK_SET) != blockEnd) { */
+  /*   free(stat); */
+  /*   return PAMU_ERR_SEEK; */
+  /* } */
+  /* if(write(fd, &beBlockSize, sizeof(int64_t)) != sizeof(int64_t)) { */
+  /*   free(stat); */
+  /*   return PAMU_ERR_WRITE; */
+  /* } */
 
   free(stat);
   // Return pointer to innards

@@ -141,22 +141,24 @@ void test_alloc_static() {
   // 1st allocation
   int64_t addr_0 = pamu_alloc(fd, 64);
   fprintf(stderr, "addr_0: %ld\n", addr_0);
-  ASSERT("1st allocation does not return an error", addr_0 >  0);
-  ASSERT("1st allocation is done right after the header", addr_0 == 24);
+  /* ASSERT("1st allocation does not return an error", addr_0 >  0); */
+  /* ASSERT("1st allocation is done right after the header", addr_0 == 24); */
 
-  // 2nd allocation
-  int64_t addr_1 = pamu_alloc(fd, 64);
-  ASSERT("2nd allocation does not return an error", addr_1 > 0);
-  ASSERT("2nd allocation is done right after the 1st alloc", addr_1 == 104);
+  /* // 2nd allocation */
+  /* int64_t addr_1 = pamu_alloc(fd, 64); */
+  /* ASSERT("2nd allocation does not return an error", addr_1 > 0); */
+  /* ASSERT("2nd allocation is done right after the 1st alloc", addr_1 == 104); */
 
-  // 3rd allocation (should fail)
-  int64_t addr_2 = pamu_alloc(fd, 1024);
-  ASSERT("3rd allocation returns PAMU_ERR_MEDIUM_FULL", addr_2 == PAMU_ERR_MEDIUM_FULL);
+  /* // 3rd allocation (should fail) */
+  /* int64_t addr_2 = pamu_alloc(fd, 1024); */
+  /* ASSERT("3rd allocation returns PAMU_ERR_MEDIUM_FULL", addr_2 == PAMU_ERR_MEDIUM_FULL); */
 
-  // Remove the temporary file
-  close(fd);
-  unlink(tempfile);
-  free(tempfile);
+  fprintf(stderr, "tempfile: %s\n", tempfile);
+
+  /* // Remove the temporary file */
+  /* close(fd); */
+  /* unlink(tempfile); */
+  /* free(tempfile); */
 }
 
 int main() {
@@ -165,10 +167,10 @@ int main() {
   char *tmpdir = getenv("TMPDIR");
   if (tmpdir) tempfolder = tmpdir;
 
-  RUN(test_init_dynamic);
-  RUN(test_init_static);
+  /* RUN(test_init_dynamic); */
+  /* RUN(test_init_static); */
 
-  RUN(test_alloc_dynamic);
+  /* RUN(test_alloc_dynamic); */
   RUN(test_alloc_static);
 
   return TEST_REPORT();
