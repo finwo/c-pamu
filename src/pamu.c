@@ -350,7 +350,99 @@ int pamu_free(int fd, int64_t addr) {
     return PAMU_ERR_OUT_OF_BOUNDS;
   }
 
+  // Fetch block info
+  int64_t block          = addr - sizeof(int64_t);
+  int64_t beBlock        = htobe64(block);
+  int64_t blockSizeFlags = htobe64(_pamu_find_sizeFlags(fd, block));
+  int64_t blockSize      = _pamu_find_size(fd, block);
+  int64_t blockFlags     = _pamu_find_flags(fd, block);
 
+  // Verify the block is supposed to be allocated
+  if (blockFlags & PAMU_INTERNAL_FLAG_FREE) {
+    return PAMU_ERR_DOUBLE_FREE;
+  }
+
+  // Verify the end marker matches the start marker
+  int64_t endMarker;
+  lseek(fd, block + blockSize + sizeof(int64_t), SEEK_SET);
+  if (read(fd, &endMarker, sizeof(int64_t)) != sizeof(int64_t)) {
+    return PAMU_ERR_READ_MALFORMED;
+  }
+  if (endMarker != blockSizeFlags) {
+    return PAMU_ERR_INVALID_ADDRESS;
+  }
+
+  // Actually free the block
+  int64_t blockMarker = htobe64(blockSize | PAMU_INTERNAL_FLAG_FREE);
+  lseek(fd, block, SEEK_SET);
+  write(fd, &blockMarker, sizeof(int64_t));
+  lseek(fd, block + blockSize + sizeof(int64_t), SEEK_SET);
+  write(fd, &blockMarker, sizeof(int64_t));
+
+  // Find next free block (or medium end)
+  int64_t nextFree = _pamu_find_next(fd, block);
+  fprintf(stdout, "nextFree: %ld\n", nextFree);
+  int64_t nextFreeFlags = 0;
+  int64_t previousFree = 0;
+  int64_t previousFreeFlags = 0;
+  while(
+    (nextFree) &&
+    (nextFree < stat->mediumSize)
+  ) {
+    nextFreeFlags = _pamu_find_flags(fd, nextFree);
+    fprintf(stdout, "  isFree: %d\n", nextFreeFlags & PAMU_INTERNAL_FLAG_FREE ? 1 : 0);
+    if (nextFreeFlags & PAMU_INTERNAL_FLAG_FREE) { break; }
+    nextFree = _pamu_find_next(fd, nextFree);
+  }
+  if (nextFreeFlags & PAMU_INTERNAL_FLAG_FREE) {
+    lseek(fd, nextFree + sizeof(int64_t), SEEK_SET);
+    read(fd, &previousFree, sizeof(int64_t));
+    nextFree = htobe64(nextFree);
+  } else {
+    nextFree = 0;
+  }
+
+  // Find previous free block (or header) if not found yet
+  fprintf(stdout, "previousFree: %ld\n", previousFree);
+  if (!previousFree) {
+    previousFree = _pamu_find_previous(fd, block, stat->headerSize);
+    fprintf(stdout, "  now: %ld\n", previousFree);
+    while(
+      (previousFree) &&
+      (previousFree >= stat->headerSize)
+    ) {
+      previousFreeFlags = _pamu_find_flags(fd, previousFree);
+      fprintf(stdout, "  isFree: %d\n", previousFreeFlags & PAMU_INTERNAL_FLAG_FREE ? 1 : 0);
+      if (previousFreeFlags & PAMU_INTERNAL_FLAG_FREE) break;
+      previousFree = _pamu_find_previous(fd, previousFree, stat->headerSize);
+    }
+    if (previousFreeFlags & PAMU_INTERNAL_FLAG_FREE) {
+      previousFree = htobe64(previousFree);
+    } else {
+      previousFree = 0;
+    }
+  }
+
+  // Write next & previous pointers to current block
+  lseek(fd, block + sizeof(int64_t), SEEK_SET);
+  write(fd, &previousFree, sizeof(int64_t));
+  write(fd, &nextFree    , sizeof(int64_t));
+
+  // Update next block's previous pointer
+  if (nextFree) {
+    lseek(fd, be64toh(nextFree) + sizeof(int64_t), SEEK_SET);
+    write(fd, &beBlock, sizeof(int64_t));
+  }
+
+  // Update the previous block's next pointer
+  if (previousFree) {
+    lseek(fd, be64toh(previousFree) + (2 * sizeof(int64_t)), SEEK_SET);
+    write(fd, &beBlock, sizeof(int64_t));
+  }
+
+  // If next/previous free = adjacent -> merge blocks
+
+  // If last block in dynamic medium, truncate the file
 
   return 0;
 }

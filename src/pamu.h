@@ -8,15 +8,17 @@
 #define  PAMU_DYNAMIC  (1 << 31)
 #define  PAMU_FLAGS    (PAMU_DYNAMIC)
 
-#define  PAMU_ERR_NONE                 ( 0)
-#define  PAMU_ERR_MEDIUM_SIZE          (-1)
-#define  PAMU_ERR_SEEK                 (-2)
-#define  PAMU_ERR_NEGATIVE_SIZE        (-3)
-#define  PAMU_ERR_READ_MALFORMED       (-4)
-#define  PAMU_ERR_MEDIUM_UNINITIALIZED (-5)
-#define  PAMU_ERR_MEDIUM_FULL          (-6)
-#define  PAMU_ERR_WRITE                (-7)
-#define  PAMU_ERR_OUT_OF_BOUNDS        (-8)
+#define  PAMU_ERR_NONE                 (  0)
+#define  PAMU_ERR_MEDIUM_SIZE          (- 1)
+#define  PAMU_ERR_SEEK                 (- 2)
+#define  PAMU_ERR_NEGATIVE_SIZE        (- 3)
+#define  PAMU_ERR_READ_MALFORMED       (- 4)
+#define  PAMU_ERR_MEDIUM_UNINITIALIZED (- 5)
+#define  PAMU_ERR_MEDIUM_FULL          (- 6)
+#define  PAMU_ERR_WRITE                (- 7)
+#define  PAMU_ERR_OUT_OF_BOUNDS        (- 8)
+#define  PAMU_ERR_INVALID_ADDRESS      (- 9)
+#define  PAMU_ERR_DOUBLE_FREE          (-10)
 
 // In-file structure
 //   header:
