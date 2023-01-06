@@ -104,6 +104,22 @@ int64_t _pamu_find_free_block(int fd, int64_t start, int64_t limit, int64_t size
   return current;
 }
 
+// Uses outer addresses
+// Reads the current's size and returns the start of the next block
+int64_t _pamu_find_next(int fd, int64_t current) {
+  int64_t size = _pamu_find_size(fd, current);
+  return current + size + (2 * sizeof(int64_t));
+}
+
+// Uses outer addresses
+// Reads the previous' size and returns it's start
+int64_t _pamu_find_previous(int fd, int64_t current, int64_t header_size) {
+  int64_t addr = current - sizeof(int64_t);
+  if (addr < header_size) return PAMU_ERR_OUT_OF_BOUNDS;
+  int64_t size = _pamu_find_size(fd, addr);
+  return current - size - (2 * sizeof(int64_t));
+}
+
 struct pamu_medium_stat * _pamu_medium_stat(int fd) {
   struct pamu_medium_stat * response = malloc(sizeof(struct pamu_medium_stat));
 
@@ -321,6 +337,21 @@ int64_t pamu_alloc(int fd, int64_t size) {
 }
 
 int pamu_free(int fd, int64_t addr) {
+
+  // Fetch info (or return error code)
+  struct pamu_medium_stat *stat = _pamu_medium_stat(fd);
+  if (stat < 0) return (int64_t)stat;
+
+  // Catch out-of-bounds
+  if (
+      (addr >= stat->mediumSize) ||
+      (addr <  stat->headerSize)
+  ) {
+    return PAMU_ERR_OUT_OF_BOUNDS;
+  }
+
+
+
   return 0;
 }
 

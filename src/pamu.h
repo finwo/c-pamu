@@ -16,6 +16,7 @@
 #define  PAMU_ERR_MEDIUM_UNINITIALIZED (-5)
 #define  PAMU_ERR_MEDIUM_FULL          (-6)
 #define  PAMU_ERR_WRITE                (-7)
+#define  PAMU_ERR_OUT_OF_BOUNDS        (-8)
 
 // In-file structure
 //   header:
