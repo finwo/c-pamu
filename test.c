@@ -26,7 +26,7 @@ void test_init_dynamic() {
   ASSERT("Medium initialized without errors", rc == 0); // Expect no errors
 
   // Check length of the file now, we expect 8 (keyword + uint32)
-  ASSERT("Initialized tmp file is 16 bytes", lseek(fd, 0, SEEK_END) == 8);
+  ASSERT("Initialized tmp file is 8 bytes", lseek(fd, 0, SEEK_END) == 8);
 
   // Verify keyword
   lseek(fd, 0, SEEK_SET);
