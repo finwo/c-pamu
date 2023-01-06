@@ -13,7 +13,6 @@ char * tempfolder   = "/tmp";
 
 void test_init_dynamic() {
   uint32_t u32;
-  int64_t  i64;
 
   // Open tmp file
   char * tempfile = calloc(1,strlen(temptemplate)+strlen(tempfolder)+2);
@@ -26,8 +25,8 @@ void test_init_dynamic() {
   int rc = pamu_init(fd, PAMU_DEFAULT | PAMU_DYNAMIC);
   ASSERT("Medium initialized without errors", rc == 0); // Expect no errors
 
-  // Check length of the file now, we expect 16 (keyword + uint32 + uint64)
-  ASSERT("Initialized tmp file is 16 bytes", lseek(fd, 0, SEEK_END) == 16);
+  // Check length of the file now, we expect 8 (keyword + uint32)
+  ASSERT("Initialized tmp file is 16 bytes", lseek(fd, 0, SEEK_END) == 8);
 
   // Verify keyword
   lseek(fd, 0, SEEK_SET);
@@ -36,11 +35,7 @@ void test_init_dynamic() {
 
   // Verify headersize and flags
   read(fd, &u32, 4);
-  ASSERT("Header size is merged with flags properly", be32toh(u32) == (PAMU_DEFAULT | PAMU_DYNAMIC | 16));
-
-  // Verify managedBytes
-  read(fd, &i64, 8);
-  ASSERT("Managed bytes marked at header end", be64toh(i64) == 16);
+  ASSERT("Header size is merged with flags properly", be32toh(u32) == (PAMU_DEFAULT | PAMU_DYNAMIC | 8));
 
   // Remove the temporary file
   close(fd);
@@ -50,7 +45,6 @@ void test_init_dynamic() {
 
 void test_init_static() {
   uint32_t u32;
-  int64_t  i64;
 
   // Open tmp file
   char * tempfile = calloc(1,strlen(temptemplate)+strlen(tempfolder)+2);
@@ -78,11 +72,7 @@ void test_init_static() {
                                                                                          //
   // Verify headersize and flags
   read(fd, &u32, 4);
-  ASSERT("Header size is merged with flags properly", be32toh(u32) == (PAMU_DEFAULT | 16));
-
-  // Verify managedBytes
-  read(fd, &i64, 8);
-  ASSERT("Managed bytes marked at header end", be64toh(i64) == 16);
+  ASSERT("Header size is merged with flags properly", be32toh(u32) == (PAMU_DEFAULT | 8));
 
   // Remove the temporary file
   close(fd);
@@ -106,14 +96,12 @@ void test_alloc_dynamic() {
   // 1st allocation
   int64_t addr_0 = pamu_alloc(fd, 64);
   ASSERT("1st allocation does not return an error", addr_0 >  0);
-  ASSERT("1st allocation is done right after the header", addr_0 == 24);
+  ASSERT("1st allocation is done right after the header", addr_0 == 16);
 
   // 2nd allocation
   int64_t addr_1 = pamu_alloc(fd, 64);
   ASSERT("2nd allocation does not return an error", addr_1 > 0);
-  ASSERT("2nd allocation is done right after the 1st alloc", addr_1 == 104);
-
-  ASSERT("2 consecutive allocations must not be the same", addr_0 != addr_1);
+  ASSERT("2nd allocation is done right after the 1st alloc", addr_1 == 96);
 
   // Remove the temporary file
   close(fd);
@@ -140,25 +128,22 @@ void test_alloc_static() {
 
   // 1st allocation
   int64_t addr_0 = pamu_alloc(fd, 64);
-  fprintf(stderr, "addr_0: %ld\n", addr_0);
-  /* ASSERT("1st allocation does not return an error", addr_0 >  0); */
-  /* ASSERT("1st allocation is done right after the header", addr_0 == 24); */
+  ASSERT("1st allocation does not return an error", addr_0 >  0);
+  ASSERT("1st allocation is done right after the header", addr_0 == 16);
 
   /* // 2nd allocation */
-  /* int64_t addr_1 = pamu_alloc(fd, 64); */
-  /* ASSERT("2nd allocation does not return an error", addr_1 > 0); */
-  /* ASSERT("2nd allocation is done right after the 1st alloc", addr_1 == 104); */
+  int64_t addr_1 = pamu_alloc(fd, 64);
+  ASSERT("2nd allocation does not return an error", addr_1 > 0);
+  ASSERT("2nd allocation is done right after the 1st alloc", addr_1 == 96);
 
-  /* // 3rd allocation (should fail) */
-  /* int64_t addr_2 = pamu_alloc(fd, 1024); */
-  /* ASSERT("3rd allocation returns PAMU_ERR_MEDIUM_FULL", addr_2 == PAMU_ERR_MEDIUM_FULL); */
+  // 3rd allocation (should fail)
+  int64_t addr_2 = pamu_alloc(fd, 1024);
+  ASSERT("3rd allocation returns PAMU_ERR_MEDIUM_FULL", addr_2 == PAMU_ERR_MEDIUM_FULL);
 
-  fprintf(stderr, "tempfile: %s\n", tempfile);
-
-  /* // Remove the temporary file */
-  /* close(fd); */
-  /* unlink(tempfile); */
-  /* free(tempfile); */
+  // Remove the temporary file
+  close(fd);
+  unlink(tempfile);
+  free(tempfile);
 }
 
 int main() {
@@ -167,10 +152,10 @@ int main() {
   char *tmpdir = getenv("TMPDIR");
   if (tmpdir) tempfolder = tmpdir;
 
-  /* RUN(test_init_dynamic); */
-  /* RUN(test_init_static); */
+  RUN(test_init_dynamic);
+  RUN(test_init_static);
 
-  /* RUN(test_alloc_dynamic); */
+  RUN(test_alloc_dynamic);
   RUN(test_alloc_static);
 
   return TEST_REPORT();
