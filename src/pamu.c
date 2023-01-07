@@ -488,8 +488,10 @@ int pamu_free(int fd, int64_t addr) {
       lseek(fd, block + sizeof(int64_t) + blockSize, SEEK_SET);
       write(fd, &blockMarker, sizeof(int64_t));
       // Update nextFree's previous pointer
-      lseek(fd, be64toh(nextFree) + sizeof(int64_t), SEEK_SET);
-      write(fd, &beBlock, sizeof(int64_t));
+      if (nextFree) {
+        lseek(fd, be64toh(nextFree) + sizeof(int64_t), SEEK_SET);
+        write(fd, &beBlock, sizeof(int64_t));
+      }
       // Update references?
     } else {
       // Next block is not free, ignore it

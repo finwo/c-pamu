@@ -248,6 +248,57 @@ void test_free_dynamic() {
   free(temp2file);
 }
 
+void test_free_static() {
+  int64_t prev, next;
+
+  // Open tmp file
+  char * tempfile = calloc(1,strlen(temptemplate)+strlen(tempfolder)+2);
+  strcat(tempfile, tempfolder);
+  strcat(tempfile, "/");
+  strcat(tempfile, temptemplate);
+  int fd = mkstemp(tempfile);
+
+  // Initialize 4k, emulating block device
+  char *buf = calloc(1, 4096);
+  write(fd, buf, 4096);
+  free(buf);
+
+  // Basic initialize
+  int rc = pamu_init(fd , PAMU_DEFAULT);
+  ASSERT("Medium initialized without errors", rc == 0);
+
+  int64_t a0 = pamu_alloc(fd, 64);
+  int64_t a1 = pamu_alloc(fd, 64);
+  int64_t a2 = pamu_alloc(fd, 64);
+
+  pamu_free(fd, a1);
+  pamu_free(fd, a2);
+
+  lseek(fd, a0, SEEK_SET);
+  read(fd, &prev, sizeof(int64_t));
+  read(fd, &next, sizeof(int64_t));
+  ASSERT("a0.prev == 0", be64toh(prev) == 0);
+  ASSERT("a0.next == 88", be64toh(next) == 88); // Symptom of free block splitting
+
+  lseek(fd, a1, SEEK_SET);
+  read(fd, &prev, sizeof(int64_t));
+  read(fd, &next, sizeof(int64_t));
+  ASSERT("a1.prev == 0", be64toh(prev) == 0);
+  ASSERT("a1.next == 0", be64toh(next) == 0);
+
+  lseek(fd, a2, SEEK_SET);
+  read(fd, &prev, sizeof(int64_t));
+  read(fd, &next, sizeof(int64_t));
+  ASSERT("a2.prev == a1.outer"        , be64toh(prev) == a1 - sizeof(int64_t));
+  ASSERT("a2.next == medium.remainder", be64toh(next) == a2 + 64 + sizeof(int64_t));
+
+  // Remove the temporary file
+  close(fd);
+  unlink(tempfile);
+  free(tempfile);
+}
+
+
 int main() {
 
   // Update temp folder from fallback
@@ -261,6 +312,7 @@ int main() {
   RUN(test_alloc_static);
 
   RUN(test_free_dynamic);
+  RUN(test_free_static);
 
   return TEST_REPORT();
 }
