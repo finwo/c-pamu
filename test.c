@@ -156,24 +156,30 @@ void test_free_dynamic() {
   strcat(tempfile, temptemplate);
   int fd = mkstemp(tempfile);
 
+  // Open tmp file
+  char * temp2file = calloc(1,strlen(temptemplate)+strlen(tempfolder)+2);
+  strcat(temp2file, tempfolder);
+  strcat(temp2file, "/");
+  strcat(temp2file, temptemplate);
+  int fd2 = mkstemp(temp2file);
+
   // Basic initialize
-  int rc = pamu_init(fd, PAMU_DEFAULT | PAMU_DYNAMIC);
-  ASSERT("Medium initialized without errors", rc == 0);
+  int rc  = pamu_init(fd , PAMU_DEFAULT | PAMU_DYNAMIC);
+  int rc2 = pamu_init(fd2, PAMU_DEFAULT | PAMU_DYNAMIC);
+  ASSERT("Medium 1 initialized without errors", rc  == 0);
+  ASSERT("Medium 2 initialized without errors", rc2 == 0);
 
   int alloc_count = 7;
-  int64_t allocations[] = {
-    pamu_alloc(fd, 64),
-    pamu_alloc(fd, 64),
-    pamu_alloc(fd, 64),
-    pamu_alloc(fd, 64),
-    pamu_alloc(fd, 64),
-    pamu_alloc(fd, 64),
-    pamu_alloc(fd, 64),
-  };
+  int64_t allocations[7];
+
+                pamu_alloc(fd2, 64);
+  int64_t a21 = pamu_alloc(fd2, 64);
+  int64_t a22 = pamu_alloc(fd2, 64);
 
   // Double-check allocations went correctly
   int64_t prev, next;
   for(i=0; i<alloc_count; i++) {
+    allocations[i] = pamu_alloc(fd, 64);
     ASSERT("allocation N is at the correct position", allocations[i] == 16 + (80 * i));
     lseek(fd, allocations[i], SEEK_SET);
     read(fd, &prev, sizeof(int64_t));
@@ -187,6 +193,9 @@ void test_free_dynamic() {
   pamu_free(fd, allocations[4]);
   pamu_free(fd, allocations[6]);
   pamu_free(fd, allocations[3]);
+
+  pamu_free(fd2, a21);
+  pamu_free(fd2, a22);
 
   lseek(fd, allocations[0], SEEK_SET);
   read(fd, &prev, sizeof(int64_t));
@@ -204,7 +213,7 @@ void test_free_dynamic() {
   read(fd, &prev, sizeof(int64_t));
   read(fd, &next, sizeof(int64_t));
   ASSERT("a2.prev == a0.outer", be64toh(prev) == allocations[0] - sizeof(int64_t));
-  ASSERT("a2.next == a6.outer", be64toh(next) == allocations[6] - sizeof(int64_t));
+  ASSERT("a2.next == 0"       , be64toh(next) == 0);
 
   lseek(fd, allocations[3], SEEK_SET);
   read(fd, &prev, sizeof(int64_t));
@@ -216,7 +225,7 @@ void test_free_dynamic() {
   read(fd, &prev, sizeof(int64_t));
   read(fd, &next, sizeof(int64_t));
   ASSERT("a4.prev == a3.outer", be64toh(prev) == allocations[3] - sizeof(int64_t));
-  ASSERT("a4.next == a6.outer", be64toh(next) == allocations[6] - sizeof(int64_t));
+  ASSERT("a4.next == 0"       , be64toh(next) == 0);
 
   lseek(fd, allocations[5], SEEK_SET);
   read(fd, &prev, sizeof(int64_t));
@@ -224,16 +233,19 @@ void test_free_dynamic() {
   ASSERT("a5.prev == 0", be64toh(prev) == 0);
   ASSERT("a5.next == 0", be64toh(next) == 0);
 
-  lseek(fd, allocations[6], SEEK_SET);
-  read(fd, &prev, sizeof(int64_t));
-  read(fd, &next, sizeof(int64_t));
-  ASSERT("a6.prev == a2.outer", be64toh(prev) == allocations[2] - sizeof(int64_t));
-  ASSERT("a6.next == 0"       , be64toh(next) == 0);
+  // Check length of the file now, we expect 0x0x1e8
+  ASSERT("a6 has been truncated off", lseek(fd, 0, SEEK_END) == 0x01e8);
+
+  // Check length of the file now, we expect 0x0x1e8
+  ASSERT("both a21 and a22 have been truncated off", lseek(fd2, 0, SEEK_END) == 0x58);
 
   // Remove the temporary file
   close(fd);
+  close(fd2);
   unlink(tempfile);
+  unlink(temp2file);
   free(tempfile);
+  free(temp2file);
 }
 
 int main() {
