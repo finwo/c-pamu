@@ -510,10 +510,38 @@ int pamu_free(int fd, int64_t addr) {
 }
 
 int64_t pamu_size(int fd, int64_t addr) {
-  return 0;
+  return _pamu_find_size(fd, addr - sizeof(int64_t));
 }
 
 // Iteration, so clients can find a reference
 int64_t pamu_next(int fd, int64_t addr) {
-  return 0;
+
+  // Fetch info (or return error code)
+  struct pamu_medium_stat *stat = _pamu_medium_stat(fd);
+  if (stat < 0) return (int64_t)stat;
+
+  // Find the outer addr of current block
+  int64_t block = addr - sizeof(int64_t);
+  if (stat->headerSize > block) {
+    block = stat->headerSize;
+  } else {
+    block = _pamu_find_next(fd, block);
+  }
+
+  int64_t flags;
+  while(block < stat->mediumSize) {
+    flags = _pamu_find_flags(fd, block);
+    if (!(flags & PAMU_INTERNAL_FLAG_FREE)) break;
+    block = _pamu_find_next(fd, block);
+  }
+
+  // End of medium
+  if (block == stat->mediumSize) {
+    free(stat);
+    return 0;
+  }
+
+  // Return the inner addr of the found allocated block
+  free(stat);
+  return block + sizeof(int64_t);
 }
