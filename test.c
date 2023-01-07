@@ -121,6 +121,7 @@ void test_alloc_static() {
   // Emulate a block device with fixed size
   char *buf = calloc(1, 1024);
   write(fd, buf, 1024);
+  free(buf);
 
   // Basic initialize
   int rc = pamu_init(fd, PAMU_DEFAULT);

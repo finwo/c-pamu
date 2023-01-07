@@ -147,6 +147,7 @@ struct pamu_medium_stat * _pamu_medium_stat(int fd) {
   rc = read(fd, &beFlaggedSize, sizeof(uint32_t));
   if (rc != sizeof(uint32_t)) {
     free(response);
+    free(keyBuf);
     return (void*)PAMU_ERR_READ_MALFORMED;
   }
   uint32_t iFlaggedHeaderSize = be32toh(beFlaggedSize);
@@ -156,6 +157,7 @@ struct pamu_medium_stat * _pamu_medium_stat(int fd) {
   // Find medium size
   response->mediumSize = lseek(fd, 0, SEEK_END);
 
+  free(keyBuf);
   return response;
 }
 
