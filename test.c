@@ -181,7 +181,7 @@ void test_free_dynamic() {
   int64_t prev, next;
   for(i=0; i<alloc_count; i++) {
     allocations[i] = pamu_alloc(fd, 64);
-    ASSERT("allocation N is at the correct position", allocations[i] == 16 + (80 * i));
+    ASSERT("allocation N is at the correct position", allocations[i] == 16 + ((64 + (2 * sizeof(int64_t))) * i));
     lseek(fd, allocations[i], SEEK_SET);
     read(fd, &prev, sizeof(int64_t));
     read(fd, &next, sizeof(int64_t));
@@ -299,6 +299,72 @@ void test_free_static() {
   free(tempfile);
 }
 
+void test_comfort_size() {
+
+  // Open tmp file
+  char * tempfile = calloc(1,strlen(temptemplate)+strlen(tempfolder)+2);
+  strcat(tempfile, tempfolder);
+  strcat(tempfile, "/");
+  strcat(tempfile, temptemplate);
+  int fd = mkstemp(tempfile);
+
+  // Basic initialize
+  int rc = pamu_init(fd , PAMU_DEFAULT | PAMU_DYNAMIC);
+  ASSERT("Medium initialized without errors", rc  == 0);
+
+  int64_t a0 = pamu_alloc(fd,   64);
+  int64_t a1 = pamu_alloc(fd,  128);
+  int64_t a2 = pamu_alloc(fd,   64);
+  int64_t a3 = pamu_alloc(fd, 1024);
+  int64_t a4 = pamu_alloc(fd,  256);
+
+  ASSERT("a0.size ==   64", pamu_size(fd, a0) ==   64);
+  ASSERT("a1.size ==  128", pamu_size(fd, a1) ==  128);
+  ASSERT("a2.size ==   64", pamu_size(fd, a2) ==   64);
+  ASSERT("a3.size == 1024", pamu_size(fd, a3) == 1024);
+  ASSERT("a4.size ==  256", pamu_size(fd, a4) ==  256);
+
+  // Remove the temporary file
+  close(fd);
+  unlink(tempfile);
+  free(tempfile);
+}
+
+void test_comfort_next() {
+
+  // Open tmp file
+  char * tempfile = calloc(1,strlen(temptemplate)+strlen(tempfolder)+2);
+  strcat(tempfile, tempfolder);
+  strcat(tempfile, "/");
+  strcat(tempfile, temptemplate);
+  int fd = mkstemp(tempfile);
+
+  // Basic initialize
+  int rc = pamu_init(fd , PAMU_DEFAULT | PAMU_DYNAMIC);
+  ASSERT("Medium initialized without errors", rc  == 0);
+
+  // Assign some blocks
+  int64_t a0 = pamu_alloc(fd,   64);
+  int64_t a1 = pamu_alloc(fd,  128);
+  int64_t a2 = pamu_alloc(fd,   64);
+  int64_t a3 = pamu_alloc(fd, 1024);
+  int64_t a4 = pamu_alloc(fd,  256);
+
+  // Free one, the next fn should skip this one
+  pamu_free(fd, a2);
+
+  int64_t current = 0;
+  ASSERT("next(0)  == a0", (current = pamu_next(fd, current)) == a0);
+  ASSERT("next(a0) == a1", (current = pamu_next(fd, current)) == a1);
+  ASSERT("next(a1) == a3", (current = pamu_next(fd, current)) == a3);
+  ASSERT("next(a3) == a4", (current = pamu_next(fd, current)) == a4);
+  ASSERT("next(a4) ==  0", (current = pamu_next(fd, current)) ==  0);
+
+  // Remove the temporary file
+  close(fd);
+  unlink(tempfile);
+  free(tempfile);
+}
 
 int main() {
 
@@ -314,6 +380,9 @@ int main() {
 
   RUN(test_free_dynamic);
   RUN(test_free_static);
+
+  RUN(test_comfort_size);
+  RUN(test_comfort_next);
 
   return TEST_REPORT();
 }
