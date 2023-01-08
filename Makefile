@@ -2,9 +2,10 @@
 LIBS=
 SRC=$(wildcard src/*.c)
 SRC+=test.c
-CFLAGS?=
-CFLAGS+=-Wall
-CFLAGS+=-Isrc
+
+override CFLAGS?=
+override CFLAGS+=-Wall
+override CFLAGS+=-Isrc
 
 # Which objects to generate before merging everything together
 OBJ:=$(SRC:.c=.o)

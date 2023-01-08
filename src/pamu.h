@@ -4,6 +4,16 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#ifndef PAMU_T_MARKER
+#define PAMU_T_MARKER   int64_t
+#endif
+#ifndef PAMU_T_POINTER
+#define PAMU_T_POINTER  int64_t
+#endif
+
+#define PAMU_T_MARKER_SIZE  sizeof(PAMU_T_MARKER)
+#define PAMU_T_POINTER_SIZE sizeof(PAMU_T_POINTER)
+
 #define  PAMU_DEFAULT  (0)
 #define  PAMU_DYNAMIC  (1 << 31)
 #define  PAMU_FLAGS    (PAMU_DYNAMIC)
@@ -39,11 +49,11 @@
 int pamu_init(int fd, uint32_t flags);
 
 // Core, alloc & free within the medium
-int64_t  pamu_alloc(int fd, int64_t  size);
-int      pamu_free(int fd , int64_t  addr);
-int64_t  pamu_size(int fd , int64_t  addr);
+PAMU_T_POINTER  pamu_alloc(int fd, PAMU_T_MARKER   size);
+int             pamu_free(int fd , PAMU_T_POINTER  addr);
+PAMU_T_MARKER   pamu_size(int fd , PAMU_T_POINTER  addr);
 
 // Iteration, so clients can find a reference
-int64_t  pamu_next(int fd, int64_t addr);
+PAMU_T_POINTER  pamu_next(int fd , PAMU_T_POINTER  addr);
 
 #endif // __FINWO_PAMU_H__

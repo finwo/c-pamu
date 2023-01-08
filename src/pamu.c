@@ -16,52 +16,83 @@
 #define  PAMU_KEYWORD         "PAMU"
 #define  PAMU_KEYWORD_LEN     4
 
-#define  PAMU_INTERNAL_FLAG_FREE  ((int64_t)1<<63)
+#define  PAMU_INTERNAL_FLAG_FREE  ((PAMU_T_MARKER)1<<((8*PAMU_T_MARKER_SIZE)-1))
+#define  PAMU_INTERNAL_FLAG_ERR   ((PAMU_T_MARKER)1<<((8*PAMU_T_MARKER_SIZE)-2))
 #define  PAMU_INTERNAL_FLAGS      (PAMU_INTERNAL_FLAG_FREE)
 
 #define MAX(a,b) ((a)>(b)?(a):(b))
 
+// Overloaded ntoh & hton
+int64_t ntoh_i64(int64_t v) {
+  return be64toh(v);
+}
+int64_t hton_i64(int64_t v) {
+  return htobe64(v);
+}
+uint64_t ntoh_u64(uint64_t v) {
+  return be64toh(v);
+}
+uint64_t hton_u64(uint64_t v) {
+  return htobe64(v);
+}
+int32_t ntoh_i32(int32_t v) {
+  return be32toh(v);
+}
+int32_t hton_i32(int32_t v) {
+  return htobe32(v);
+}
+uint32_t ntoh_u32(uint32_t v) {
+  return be32toh(v);
+}
+uint32_t hton_u32(uint32_t v) {
+  return htobe32(v);
+}
+#define hton(v) _Generic(v, uint32_t: hton_u32, int32_t: hton_i32, int64_t: hton_i64, uint64_t: hton_u64)(v)
+#define ntoh(v) _Generic(v, uint32_t: ntoh_u32, int32_t: ntoh_i32, int64_t: ntoh_i64, uint64_t: ntoh_u64)(v)
+
 struct pamu_medium_stat {
   uint32_t flags;
   uint32_t headerSize;
-  uint64_t mediumSize;
+  PAMU_T_MARKER mediumSize;
 };
 
 // Uses outer address
 // Returns inner size in bytes
-int64_t _pamu_find_sizeFlags(int fd, uint64_t addr) {
-  uint64_t beSize;
+PAMU_T_MARKER _pamu_find_sizeFlags(int fd, PAMU_T_POINTER addr) {
+  PAMU_T_MARKER beSize;
 
   // Go to the requested address
-  uint64_t _addr = lseek(fd, addr, SEEK_SET);
+  PAMU_T_POINTER _addr = lseek(fd, addr, SEEK_SET);
   if (addr != _addr) {
     return PAMU_ERR_READ_MALFORMED;
   }
 
   // Read the size|flags
-  ssize_t rc = read(fd, &beSize, sizeof(uint64_t));
-  if (rc != sizeof(uint64_t)) {
+  ssize_t rc = read(fd, &beSize, PAMU_T_MARKER_SIZE);
+  if (rc != PAMU_T_MARKER_SIZE) {
     return PAMU_ERR_READ_MALFORMED;
   }
 
   // And return the size without the flags
-  return be64toh(beSize);
+  return ntoh(beSize);
 }
 
-int64_t _pamu_find_size(int fd, uint64_t addr) {
+PAMU_T_MARKER _pamu_find_size(int fd, PAMU_T_POINTER addr) {
   return _pamu_find_sizeFlags(fd, addr) & (~PAMU_INTERNAL_FLAGS);
 }
 
-int64_t _pamu_find_flags(int fd, uint64_t addr) {
-  return _pamu_find_sizeFlags(fd, addr) & PAMU_INTERNAL_FLAGS;
+PAMU_T_MARKER _pamu_find_flags(int fd, PAMU_T_POINTER addr) {
+  PAMU_T_MARKER raw = _pamu_find_sizeFlags(fd, addr);
+  if (raw & PAMU_INTERNAL_FLAG_ERR) return raw;
+  return raw & PAMU_INTERNAL_FLAGS;
 }
 
 // Uses outer addresses
 // Returns limit = no block found
-int64_t _pamu_find_free_block(int fd, int64_t start, int64_t limit, int64_t size) {
-  int64_t current = start;
-  int64_t csize   = 0;
-  int64_t cflags  = 0;
+PAMU_T_POINTER _pamu_find_free_block(int fd, PAMU_T_POINTER start, PAMU_T_POINTER limit, PAMU_T_MARKER size) {
+  PAMU_T_POINTER current = start;
+  PAMU_T_MARKER csize   = 0;
+  PAMU_T_MARKER cflags  = 0;
 
   while(
     current &&
@@ -76,7 +107,7 @@ int64_t _pamu_find_free_block(int fd, int64_t start, int64_t limit, int64_t size
 
     // If not free, go to the next entry
     if (!(cflags & PAMU_INTERNAL_FLAG_FREE)) {
-      current += csize + (2 * sizeof(int64_t));
+      current += csize + (2 * PAMU_T_MARKER_SIZE);
       continue;
     }
 
@@ -86,10 +117,10 @@ int64_t _pamu_find_free_block(int fd, int64_t start, int64_t limit, int64_t size
     if (csize >= size) return current;
 
     // Skip to the next free block
-    if (lseek(fd, current + (2*sizeof(int64_t)), SEEK_SET) != current + (2*sizeof(int64_t))) {
+    if (lseek(fd, current + (2*PAMU_T_MARKER_SIZE), SEEK_SET) != current + (2*PAMU_T_MARKER_SIZE)) {
       return PAMU_ERR_READ_MALFORMED;
     }
-    if (read(fd, &current, sizeof(int64_t)) != sizeof(int64_t)) {
+    if (read(fd, &current, PAMU_T_POINTER_SIZE) != PAMU_T_POINTER_SIZE) {
       return PAMU_ERR_READ_MALFORMED;
     }
   }
@@ -106,18 +137,18 @@ int64_t _pamu_find_free_block(int fd, int64_t start, int64_t limit, int64_t size
 
 // Uses outer addresses
 // Reads the current's size and returns the start of the next block
-int64_t _pamu_find_next(int fd, int64_t current) {
-  int64_t size = _pamu_find_size(fd, current);
-  return current + size + (2 * sizeof(int64_t));
+PAMU_T_POINTER _pamu_find_next(int fd, PAMU_T_POINTER current) {
+  PAMU_T_MARKER size = _pamu_find_size(fd, current);
+  return current + size + (2 * PAMU_T_MARKER_SIZE);
 }
 
 // Uses outer addresses
 // Reads the previous' size and returns it's start
-int64_t _pamu_find_previous(int fd, int64_t current, int64_t header_size) {
-  int64_t addr = current - sizeof(int64_t);
+PAMU_T_POINTER _pamu_find_previous(int fd, PAMU_T_POINTER current, uint32_t header_size) {
+  PAMU_T_POINTER addr = current - PAMU_T_MARKER_SIZE;
   if (addr < header_size) return PAMU_ERR_OUT_OF_BOUNDS;
-  int64_t size = _pamu_find_size(fd, addr);
-  return current - size - (2 * sizeof(int64_t));
+  PAMU_T_MARKER size = _pamu_find_size(fd, addr);
+  return current - size - (2 * PAMU_T_MARKER_SIZE);
 }
 
 struct pamu_medium_stat * _pamu_medium_stat(int fd) {
@@ -150,7 +181,7 @@ struct pamu_medium_stat * _pamu_medium_stat(int fd) {
     free(keyBuf);
     return (void*)PAMU_ERR_READ_MALFORMED;
   }
-  uint32_t iFlaggedHeaderSize = be32toh(beFlaggedSize);
+  uint32_t iFlaggedHeaderSize = ntoh(beFlaggedSize);
   response->flags      = iFlaggedHeaderSize &  PAMU_FLAGS;
   response->headerSize = iFlaggedHeaderSize & ~PAMU_FLAGS;
 
@@ -173,14 +204,14 @@ int pamu_init(int fd, uint32_t flags) {
 
   // "calculate" entry size
   uint32_t iEntrySize =
-    sizeof(uint64_t) + // Start size indicator
-    sizeof(uint64_t) + // Previous free pointer in empty records
-    sizeof(uint64_t) + // Next free pointer in empty records
-    sizeof(uint64_t) + // End size indicator
+    PAMU_T_MARKER_SIZE + // Start size indicator
+    PAMU_T_POINTER_SIZE + // Previous free pointer in empty records
+    PAMU_T_POINTER_SIZE + // Next free pointer in empty records
+    PAMU_T_MARKER_SIZE + // End size indicator
     0;
 
   // Fetch medium size
-  uint64_t iMediumSize = lseek(fd, 0, SEEK_END);
+  PAMU_T_MARKER iMediumSize = lseek(fd, 0, SEEK_END);
 
   // If not dynamic: check if our header + 1 entry is going to fit
   if (
@@ -198,37 +229,37 @@ int pamu_init(int fd, uint32_t flags) {
   write(fd, PAMU_KEYWORD, PAMU_KEYWORD_LEN);
 
   // Write flags | headersize uint32_t
-  uint32_t beHeaderSize = htobe32(flags | iHeaderSize);
+  uint32_t beHeaderSize = hton(flags | iHeaderSize);
   write(fd, &beHeaderSize, sizeof(uint32_t));
 
   // Initialize medium as free blob
-  int64_t mediumSize = lseek(fd, 0, SEEK_END);
-  int64_t blobSize   = mediumSize - iHeaderSize - (2 * sizeof(int64_t));
-  int64_t blobMarker = htobe64(blobSize | PAMU_INTERNAL_FLAG_FREE);
-  int64_t zero       = 0;
+  PAMU_T_MARKER mediumSize = lseek(fd, 0, SEEK_END);
+  PAMU_T_MARKER blobSize   = mediumSize - iHeaderSize - (2 * PAMU_T_MARKER_SIZE);
+  PAMU_T_MARKER blobMarker = hton(blobSize | PAMU_INTERNAL_FLAG_FREE);
+  int64_t zero      = 0;
   if (!(flags & PAMU_DYNAMIC)) {
     lseek(fd, iHeaderSize, SEEK_SET);
-    write(fd, &blobMarker, sizeof(int64_t)); // Start marker
-    write(fd, &zero      , sizeof(int64_t)); // Previous pointer
-    write(fd, &zero      , sizeof(int64_t)); // Next Pointer
-    lseek(fd, iHeaderSize + blobSize + sizeof(int64_t), SEEK_SET);
-    write(fd, &blobMarker, sizeof(int64_t)); // End marker
+    write(fd, &blobMarker, PAMU_T_MARKER_SIZE); // Start marker
+    write(fd, &zero      , PAMU_T_POINTER_SIZE); // Previous pointer
+    write(fd, &zero      , PAMU_T_POINTER_SIZE); // Next Pointer
+    lseek(fd, iHeaderSize + blobSize + PAMU_T_MARKER_SIZE, SEEK_SET);
+    write(fd, &blobMarker, PAMU_T_MARKER_SIZE); // End marker
   }
 
   return 0;
 }
 
 // Returns inner address or error
-int64_t pamu_alloc(int fd, int64_t size) {
+PAMU_T_POINTER pamu_alloc(int fd, PAMU_T_MARKER size) {
   if (size <= 0) return PAMU_ERR_NEGATIVE_SIZE;
-  if (size < (2*sizeof(int64_t))) size = sizeof(int64_t);
+  if (size < (2*PAMU_T_POINTER_SIZE)) size = PAMU_T_POINTER_SIZE;
 
   // Fetch info (or return error code)
   struct pamu_medium_stat *stat = _pamu_medium_stat(fd);
-  if (stat < 0) return (int64_t)stat;
+  if (stat < 0) return (PAMU_T_POINTER)stat;
 
   // Find a pre-existing block with the correct size (or throw error)
-  int64_t block = _pamu_find_free_block(fd, stat->headerSize, stat->mediumSize, size);
+  PAMU_T_POINTER block = _pamu_find_free_block(fd, stat->headerSize, stat->mediumSize, size);
 
   // Error during finding
   if (block < 0) {
@@ -238,7 +269,7 @@ int64_t pamu_alloc(int fd, int64_t size) {
 
   // Throw error if non-dynamic & not enough space
   if (
-    (block + (2*sizeof(int64_t)) + size >= stat->mediumSize) &&
+    (block + (2*PAMU_T_MARKER_SIZE) + size >= stat->mediumSize) &&
     (!(stat->flags & PAMU_DYNAMIC))
   ) {
     free(stat);
@@ -248,49 +279,49 @@ int64_t pamu_alloc(int fd, int64_t size) {
   // Here = got the space
 
   // Fetch or build block size
-  int64_t blockSize = block == stat->mediumSize
+  PAMU_T_MARKER blockSize = block == stat->mediumSize
     ? size
     : _pamu_find_size(fd, block);
-  int64_t blockMarker = htobe64(blockSize | PAMU_INTERNAL_FLAG_FREE);
+  PAMU_T_MARKER blockMarker = hton(blockSize | PAMU_INTERNAL_FLAG_FREE);
 
   // Split free block if large enough
   int64_t zero = 0;
-  int64_t previousFree;
-  int64_t nextFree;
-  int64_t newFree;
-  int64_t newFreeSize;
-  int64_t newFreeSizeFlags;
-  int64_t beBlock = htobe64(block);
-  if ((blockSize - size) > (4 * sizeof(int64_t))) {
-    lseek(fd, block + sizeof(int64_t), SEEK_SET);
-    read(fd, &previousFree, sizeof(int64_t));
-    read(fd, &nextFree, sizeof(int64_t));
+  PAMU_T_POINTER previousFree;
+  PAMU_T_POINTER nextFree;
+  PAMU_T_POINTER newFree;
+  PAMU_T_MARKER  newFreeSize;
+  PAMU_T_MARKER  newFreeSizeFlags;
+  PAMU_T_POINTER beBlock = hton(block);
+  if ((blockSize - size) > ((2 * PAMU_T_POINTER_SIZE) + (2*PAMU_T_MARKER_SIZE))) {
+    lseek(fd, block + PAMU_T_MARKER_SIZE, SEEK_SET);
+    read(fd, &previousFree, PAMU_T_POINTER_SIZE);
+    read(fd, &nextFree, PAMU_T_POINTER_SIZE);
 
-    newFree          = htobe64( block     + size + (2 * sizeof(int64_t)));
-    newFreeSize      =          blockSize - size - (2 * sizeof(int64_t)) ;
-    newFreeSizeFlags = htobe64(newFreeSize | PAMU_INTERNAL_FLAG_FREE);
+    newFree          = hton( block     + size + (2 * PAMU_T_MARKER_SIZE));
+    newFreeSize      =          blockSize - size - (2 * PAMU_T_MARKER_SIZE) ;
+    newFreeSizeFlags = hton(newFreeSize | PAMU_INTERNAL_FLAG_FREE);
 
     // Update the current block
     blockSize   = size;
-    blockMarker = htobe64(blockSize | PAMU_INTERNAL_FLAG_FREE);
+    blockMarker = hton(blockSize | PAMU_INTERNAL_FLAG_FREE);
     lseek(fd, block, SEEK_SET);
-    write(fd, &blockMarker , sizeof(int64_t)); // Start marker
-    write(fd, &previousFree, sizeof(int64_t)); // Previous free
-    write(fd, &newFree     , sizeof(int64_t)); // Next/new free
-    lseek(fd, block + size + sizeof(int64_t), SEEK_SET);
-    write(fd, &blockMarker , sizeof(int64_t)); // End marker
+    write(fd, &blockMarker , PAMU_T_MARKER_SIZE);  // Start marker
+    write(fd, &previousFree, PAMU_T_POINTER_SIZE); // Previous free
+    write(fd, &newFree     , PAMU_T_POINTER_SIZE); // Next/new free
+    lseek(fd, block + size + PAMU_T_MARKER_SIZE, SEEK_SET);
+    write(fd, &blockMarker , PAMU_T_MARKER_SIZE);  // End marker
 
     // Build new free block
-    write(fd, &newFreeSizeFlags, sizeof(int64_t)); // Start marker
-    write(fd, &beBlock         , sizeof(int64_t)); // Previous/current free
-    write(fd, &nextFree        , sizeof(int64_t)); // Next free
-    lseek(fd, be64toh(newFree) + newFreeSize + sizeof(int64_t), SEEK_SET);
-    write(fd, &newFreeSizeFlags, sizeof(int64_t)); // End marker
+    write(fd, &newFreeSizeFlags, PAMU_T_MARKER_SIZE); // Start marker
+    write(fd, &beBlock         , PAMU_T_POINTER_SIZE); // Previous/current free
+    write(fd, &nextFree        , PAMU_T_POINTER_SIZE); // Next free
+    lseek(fd, ntoh(newFree) + newFreeSize + PAMU_T_MARKER_SIZE, SEEK_SET);
+    write(fd, &newFreeSizeFlags, PAMU_T_MARKER_SIZE); // End marker
 
     // Update next block to point it's previous to the new free
     if (nextFree) {
-      lseek(fd, be64toh(nextFree) + sizeof(int64_t), SEEK_SET);
-      write(fd, &newFree                           , sizeof(int64_t));
+      lseek(fd, ntoh(nextFree) + PAMU_T_MARKER_SIZE, SEEK_SET);
+      write(fd, &newFree, PAMU_T_POINTER_SIZE);
     }
 
     // No need to update previous free block in this step
@@ -303,46 +334,46 @@ int64_t pamu_alloc(int fd, int64_t size) {
     (block == stat->mediumSize)
   ) {
     lseek(fd, block, SEEK_SET);
-    write(fd, &blockMarker, sizeof(int64_t)); // Start marker
-    write(fd, &zero       , sizeof(int64_t)); // Previous free
-    write(fd, &zero       , sizeof(int64_t)); // Next free
-    lseek(fd, block + blockSize + sizeof(int64_t), SEEK_SET);
-    write(fd, &blockMarker, sizeof(int64_t)); // End marker
+    write(fd, &blockMarker, PAMU_T_MARKER_SIZE);  // Start marker
+    write(fd, &zero       , PAMU_T_POINTER_SIZE); // Previous free
+    write(fd, &zero       , PAMU_T_POINTER_SIZE); // Next free
+    lseek(fd, block + blockSize + PAMU_T_MARKER_SIZE, SEEK_SET);
+    write(fd, &blockMarker, PAMU_T_MARKER_SIZE);  // End marker
   }
 
   // We don't need the stat anymore
   free(stat);
 
   // Mark the current block as allocated & read previous/next free pointers
-  blockMarker = htobe64(blockSize);
+  blockMarker = hton(blockSize);
   lseek(fd, block, SEEK_SET);
-  write(fd, &blockMarker, sizeof(int64_t));
-  read(fd, &previousFree, sizeof(int64_t));
-  read(fd, &nextFree    , sizeof(int64_t));
-  lseek(fd, block + blockSize + sizeof(int64_t), SEEK_SET);
-  write(fd, &blockMarker, sizeof(int64_t));
+  write(fd, &blockMarker, PAMU_T_MARKER_SIZE);
+  read(fd, &previousFree, PAMU_T_POINTER_SIZE);
+  read(fd, &nextFree    , PAMU_T_POINTER_SIZE);
+  lseek(fd, block + blockSize + PAMU_T_MARKER_SIZE, SEEK_SET);
+  write(fd, &blockMarker, PAMU_T_MARKER_SIZE);
 
   // Update the previous free's next pointer
   if (previousFree) {
-    lseek(fd, be64toh(previousFree) + (2*sizeof(int64_t)), SEEK_SET);
-    write(fd, &nextFree, sizeof(int64_t));
+    lseek(fd, ntoh(previousFree) + (2*PAMU_T_MARKER_SIZE), SEEK_SET);
+    write(fd, &nextFree, PAMU_T_POINTER_SIZE);
   }
 
   // Update the next free's previous pointer
   if (nextFree) {
-    lseek(fd, be64toh(nextFree) + (1*sizeof(int64_t)), SEEK_SET);
-    write(fd, &previousFree, sizeof(int64_t));
+    lseek(fd, ntoh(nextFree) + (1*PAMU_T_MARKER_SIZE), SEEK_SET);
+    write(fd, &previousFree, PAMU_T_POINTER_SIZE);
   }
 
   // Return pointer to innards
-  return block + sizeof(int64_t);
+  return block + PAMU_T_MARKER_SIZE;
 }
 
-int pamu_free(int fd, int64_t addr) {
+int pamu_free(int fd, PAMU_T_POINTER addr) {
 
   // Fetch info (or return error code)
   struct pamu_medium_stat *stat = _pamu_medium_stat(fd);
-  if (stat < 0) return (int64_t)stat;
+  if (stat < 0) return (int)stat;
 
   // Catch out-of-bounds
   if (
@@ -353,12 +384,12 @@ int pamu_free(int fd, int64_t addr) {
   }
 
   // Fetch block info
-  int64_t zero           = 0;
-  int64_t block          = addr - sizeof(int64_t);
-  int64_t beBlock        = htobe64(block);
-  int64_t blockSizeFlags = htobe64(_pamu_find_sizeFlags(fd, block));
-  int64_t blockSize      = _pamu_find_size(fd, block);
-  int64_t blockFlags     = _pamu_find_flags(fd, block);
+  int64_t zero          = 0;
+  PAMU_T_POINTER block         = addr - PAMU_T_MARKER_SIZE;
+  PAMU_T_POINTER beBlock       = hton(block);
+  PAMU_T_MARKER blockSizeFlags = hton(_pamu_find_sizeFlags(fd, block));
+  PAMU_T_MARKER blockSize      = _pamu_find_size(fd, block);
+  PAMU_T_MARKER blockFlags     = _pamu_find_flags(fd, block);
 
   // Verify the block is supposed to be allocated
   if (blockFlags & PAMU_INTERNAL_FLAG_FREE) {
@@ -367,9 +398,9 @@ int pamu_free(int fd, int64_t addr) {
   }
 
   // Verify the end marker matches the start marker
-  int64_t endMarker;
-  lseek(fd, block + blockSize + sizeof(int64_t), SEEK_SET);
-  if (read(fd, &endMarker, sizeof(int64_t)) != sizeof(int64_t)) {
+  PAMU_T_MARKER endMarker;
+  lseek(fd, block + blockSize + PAMU_T_MARKER_SIZE, SEEK_SET);
+  if (read(fd, &endMarker, PAMU_T_MARKER_SIZE) != PAMU_T_MARKER_SIZE) {
     free(stat);
     return PAMU_ERR_READ_MALFORMED;
   }
@@ -379,17 +410,17 @@ int pamu_free(int fd, int64_t addr) {
   }
 
   // Actually free the block
-  int64_t blockMarker = htobe64(blockSize | PAMU_INTERNAL_FLAG_FREE);
+  PAMU_T_MARKER blockMarker = hton(blockSize | PAMU_INTERNAL_FLAG_FREE);
   lseek(fd, block, SEEK_SET);
-  write(fd, &blockMarker, sizeof(int64_t));
-  lseek(fd, block + blockSize + sizeof(int64_t), SEEK_SET);
-  write(fd, &blockMarker, sizeof(int64_t));
+  write(fd, &blockMarker, PAMU_T_MARKER_SIZE);
+  lseek(fd, block + blockSize + PAMU_T_MARKER_SIZE, SEEK_SET);
+  write(fd, &blockMarker, PAMU_T_MARKER_SIZE);
 
   // Find next free block (or medium end)
-  int64_t nextFree          = _pamu_find_next(fd, block);
-  int64_t nextFreeFlags     = 0;
-  int64_t previousFree      = 0;
-  int64_t previousFreeFlags = 0;
+  PAMU_T_POINTER nextFree          = _pamu_find_next(fd, block);
+  PAMU_T_MARKER  nextFreeFlags     = 0;
+  PAMU_T_POINTER previousFree      = 0;
+  PAMU_T_MARKER  previousFreeFlags = 0;
   while(
     (nextFree) &&
     (nextFree < stat->mediumSize)
@@ -399,9 +430,9 @@ int pamu_free(int fd, int64_t addr) {
     nextFree = _pamu_find_next(fd, nextFree);
   }
   if (nextFreeFlags & PAMU_INTERNAL_FLAG_FREE) {
-    lseek(fd, nextFree + sizeof(int64_t), SEEK_SET);
-    read(fd, &previousFree, sizeof(int64_t));
-    nextFree = htobe64(nextFree);
+    lseek(fd, nextFree + PAMU_T_MARKER_SIZE, SEEK_SET);
+    read(fd, &previousFree, PAMU_T_POINTER_SIZE);
+    nextFree = hton(nextFree);
   } else {
     nextFree = 0;
   }
@@ -417,50 +448,50 @@ int pamu_free(int fd, int64_t addr) {
       if (previousFreeFlags & PAMU_INTERNAL_FLAG_FREE) break;
       previousFree = _pamu_find_previous(fd, previousFree, stat->headerSize);
     }
-    if (previousFreeFlags & PAMU_INTERNAL_FLAG_FREE) {
-      previousFree = htobe64(previousFree);
+    if ((previousFreeFlags & PAMU_INTERNAL_FLAG_FREE) && (!(previousFreeFlags & PAMU_INTERNAL_FLAG_ERR))) {
+      previousFree = hton(previousFree);
     } else {
       previousFree = 0;
     }
   }
 
   // Write next & previous pointers to current block
-  lseek(fd, block + sizeof(int64_t), SEEK_SET);
-  write(fd, &previousFree, sizeof(int64_t));
-  write(fd, &nextFree    , sizeof(int64_t));
+  lseek(fd, block + PAMU_T_MARKER_SIZE, SEEK_SET);
+  write(fd, &previousFree, PAMU_T_POINTER_SIZE);
+  write(fd, &nextFree    , PAMU_T_POINTER_SIZE);
 
   // Update next block's previous pointer
   if (nextFree) {
-    lseek(fd, be64toh(nextFree) + sizeof(int64_t), SEEK_SET);
-    write(fd, &beBlock, sizeof(int64_t));
+    lseek(fd, ntoh(nextFree) + PAMU_T_MARKER_SIZE, SEEK_SET);
+    write(fd, &beBlock, PAMU_T_POINTER_SIZE);
   }
 
   // Update the previous block's next pointer
   if (previousFree) {
-    lseek(fd, be64toh(previousFree) + (2 * sizeof(int64_t)), SEEK_SET);
-    write(fd, &beBlock, sizeof(int64_t));
+    lseek(fd, ntoh(previousFree) + PAMU_T_MARKER_SIZE + PAMU_T_POINTER_SIZE, SEEK_SET);
+    write(fd, &beBlock, PAMU_T_POINTER_SIZE);
   }
 
   // Merge with previous block if it's our neighbour
   // Find previous block and it's flags
-  int64_t previousAdjacent = _pamu_find_previous(fd, block, stat->headerSize);
-  int64_t previousAdjacentFlags, previousAdjacentSize, previousAdjacentMarker;
+  PAMU_T_POINTER previousAdjacent = _pamu_find_previous(fd, block, stat->headerSize);
+  PAMU_T_MARKER  previousAdjacentFlags, previousAdjacentSize, previousAdjacentMarker;
   if (previousAdjacent >= 0) {
     previousAdjacentFlags = _pamu_find_flags(fd, previousAdjacent);
     previousAdjacentSize  = _pamu_find_size(fd, previousAdjacent);
     if (previousAdjacentFlags & PAMU_INTERNAL_FLAG_FREE) {
       // Merge the 2 blocks
-      previousAdjacentSize   += blockSize + (2 * sizeof(int64_t));
-      previousAdjacentMarker  = htobe64(previousAdjacentSize | PAMU_INTERNAL_FLAG_FREE);
+      previousAdjacentSize   += blockSize + (2 * PAMU_T_MARKER_SIZE);
+      previousAdjacentMarker  = hton(previousAdjacentSize | PAMU_INTERNAL_FLAG_FREE);
       lseek(fd, previousAdjacent, SEEK_SET);
-      write(fd, &previousAdjacentMarker, sizeof(int64_t));
-      read( fd, &previousFree, sizeof(int64_t));
-      write(fd, &nextFree, sizeof(int64_t));
-      lseek(fd, previousAdjacent + sizeof(int64_t) + previousAdjacentSize, SEEK_SET);
-      write(fd, &previousAdjacentMarker, sizeof(int64_t));
+      write(fd, &previousAdjacentMarker, PAMU_T_MARKER_SIZE);
+      read( fd, &previousFree, PAMU_T_POINTER_SIZE);
+      write(fd, &nextFree, PAMU_T_POINTER_SIZE);
+      lseek(fd, previousAdjacent + PAMU_T_MARKER_SIZE + previousAdjacentSize, SEEK_SET);
+      write(fd, &previousAdjacentMarker, PAMU_T_MARKER_SIZE);
       // Update our own references
       block     = previousAdjacent;
-      beBlock   = htobe64(block);
+      beBlock   = hton(block);
       blockSize = previousAdjacentSize;
     } else {
       // Previous block is not free, ignore it
@@ -469,30 +500,30 @@ int pamu_free(int fd, int64_t addr) {
 
   // Merge with next block if it's our neighbour
   // Find next block and it's flags
-  int64_t nextAdjacent = _pamu_find_next(fd, block);
-  int64_t nextAdjacentFlags, nextAdjacentSize;
+  PAMU_T_POINTER nextAdjacent = _pamu_find_next(fd, block);
+  PAMU_T_MARKER nextAdjacentFlags, nextAdjacentSize;
   if (nextAdjacent < stat->mediumSize) {
     nextAdjacentFlags = _pamu_find_flags(fd, nextAdjacent);
     nextAdjacentSize  = _pamu_find_size(fd, nextAdjacent);
     if (nextAdjacentFlags & PAMU_INTERNAL_FLAG_FREE) {
       // Merge the 2 blocks
       // Update block stats
-      blockSize   += nextAdjacentSize + (2 * sizeof(int64_t));
-      blockMarker  = htobe64(blockSize | PAMU_INTERNAL_FLAG_FREE);
+      blockSize   += nextAdjacentSize + (2 * PAMU_T_MARKER_SIZE);
+      blockMarker  = hton(blockSize | PAMU_INTERNAL_FLAG_FREE);
       // Read new next
-      lseek(fd, nextAdjacent + (2 * sizeof(int64_t)), SEEK_SET);
-      read(fd, &nextFree, sizeof(int64_t));
+      lseek(fd, nextAdjacent + PAMU_T_MARKER_SIZE + PAMU_T_POINTER_SIZE, SEEK_SET);
+      read(fd, &nextFree, PAMU_T_POINTER_SIZE);
       // Update our current block
       lseek(fd, block, SEEK_SET);
-      write(fd, &blockMarker, sizeof(int64_t));
-      lseek(fd, block + (2 * sizeof(int64_t)), SEEK_SET);
-      write(fd, &nextFree, sizeof(int64_t));
-      lseek(fd, block + sizeof(int64_t) + blockSize, SEEK_SET);
-      write(fd, &blockMarker, sizeof(int64_t));
+      write(fd, &blockMarker, PAMU_T_MARKER_SIZE);
+      lseek(fd, block + PAMU_T_MARKER_SIZE + PAMU_T_POINTER_SIZE, SEEK_SET);
+      write(fd, &nextFree, PAMU_T_POINTER_SIZE);
+      lseek(fd, block + blockSize + PAMU_T_MARKER_SIZE, SEEK_SET);
+      write(fd, &blockMarker, PAMU_T_MARKER_SIZE);
       // Update nextFree's previous pointer
       if (nextFree) {
-        lseek(fd, be64toh(nextFree) + sizeof(int64_t), SEEK_SET);
-        write(fd, &beBlock, sizeof(int64_t));
+        lseek(fd, ntoh(nextFree) + PAMU_T_MARKER_SIZE, SEEK_SET);
+        write(fd, &beBlock, PAMU_T_POINTER_SIZE);
       }
       // Update references?
     } else {
@@ -501,9 +532,9 @@ int pamu_free(int fd, int64_t addr) {
   } else if (stat->flags & PAMU_DYNAMIC) {
     // Truncate the file if in dynamic mode
     // Set previousFree's next pointer to 0
-    lseek(fd, be64toh(previousFree) + (2 * sizeof(int64_t)), SEEK_SET);
-    write(fd, &zero, sizeof(int64_t));
-    if (ftruncate(fd, stat->mediumSize - (2 * sizeof(int64_t)) - blockSize)) {
+    lseek(fd, ntoh(previousFree) + PAMU_T_MARKER_SIZE + PAMU_T_POINTER_SIZE, SEEK_SET);
+    write(fd, &zero, PAMU_T_POINTER_SIZE);
+    if (ftruncate(fd, stat->mediumSize - (2 * PAMU_T_MARKER_SIZE) - blockSize)) {
       perror("ftruncate");
       exit(1);
     }
@@ -513,26 +544,26 @@ int pamu_free(int fd, int64_t addr) {
   return 0;
 }
 
-int64_t pamu_size(int fd, int64_t addr) {
-  return _pamu_find_size(fd, addr - sizeof(int64_t));
+PAMU_T_MARKER pamu_size(int fd, PAMU_T_POINTER addr) {
+  return _pamu_find_size(fd, addr - PAMU_T_MARKER_SIZE);
 }
 
 // Iteration, so clients can find a reference
-int64_t pamu_next(int fd, int64_t addr) {
+PAMU_T_POINTER pamu_next(int fd, PAMU_T_POINTER addr) {
 
   // Fetch info (or return error code)
   struct pamu_medium_stat *stat = _pamu_medium_stat(fd);
-  if (stat < 0) return (int64_t)stat;
+  if (stat < 0) return (PAMU_T_POINTER)stat;
 
   // Find the outer addr of current block
-  int64_t block = addr - sizeof(int64_t);
+  PAMU_T_POINTER block = addr - PAMU_T_MARKER_SIZE;
   if (stat->headerSize > block) {
     block = stat->headerSize;
   } else {
     block = _pamu_find_next(fd, block);
   }
 
-  int64_t flags;
+  PAMU_T_MARKER flags;
   while(block < stat->mediumSize) {
     flags = _pamu_find_flags(fd, block);
     if (!(flags & PAMU_INTERNAL_FLAG_FREE)) break;
@@ -547,5 +578,5 @@ int64_t pamu_next(int fd, int64_t addr) {
 
   // Return the inner addr of the found allocated block
   free(stat);
-  return block + sizeof(int64_t);
+  return block + PAMU_T_MARKER_SIZE;
 }
