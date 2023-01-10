@@ -51,8 +51,8 @@ uint32_t hton_u32(uint32_t v) {
 #define ntoh(v) _Generic(v, uint32_t: ntoh_u32, int32_t: ntoh_i32, int64_t: ntoh_i64, uint64_t: ntoh_u64)(v)
 
 struct pamu_medium_stat {
-  uint32_t flags;
-  uint32_t headerSize;
+  int32_t flags;
+  int32_t headerSize;
   PAMU_T_MARKER mediumSize;
 };
 
@@ -561,7 +561,7 @@ PAMU_T_POINTER pamu_next(int fd, PAMU_T_POINTER addr) {
 
   // Find the outer addr of current block
   PAMU_T_POINTER block = addr - PAMU_T_MARKER_SIZE;
-  if (stat->headerSize > block) {
+  if (block < stat->headerSize) {
     block = stat->headerSize;
   } else {
     block = _pamu_find_next(fd, block);
