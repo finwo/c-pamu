@@ -313,7 +313,7 @@ PAMU_T_POINTER pamu_alloc(int fd, PAMU_T_MARKER size) {
 
     // Build new free block
     write(fd, &newFreeSizeFlags, PAMU_T_MARKER_SIZE); // Start marker
-    write(fd, &beBlock         , PAMU_T_POINTER_SIZE); // Previous/current free
+    write(fd, &previousFree    , PAMU_T_POINTER_SIZE); // Previous/current free
     write(fd, &nextFree        , PAMU_T_POINTER_SIZE); // Next free
     lseek(fd, ntoh(newFree) + newFreeSize + PAMU_T_MARKER_SIZE, SEEK_SET);
     write(fd, &newFreeSizeFlags, PAMU_T_MARKER_SIZE); // End marker
@@ -324,6 +324,8 @@ PAMU_T_POINTER pamu_alloc(int fd, PAMU_T_MARKER size) {
       write(fd, &newFree, PAMU_T_POINTER_SIZE);
     }
 
+    // And the new free is now our next free
+    nextFree = newFree;
     // No need to update previous free block in this step
   }
 
@@ -355,13 +357,13 @@ PAMU_T_POINTER pamu_alloc(int fd, PAMU_T_MARKER size) {
 
   // Update the previous free's next pointer
   if (previousFree) {
-    lseek(fd, ntoh(previousFree) + (2*PAMU_T_MARKER_SIZE), SEEK_SET);
+    lseek(fd, ntoh(previousFree) + PAMU_T_MARKER_SIZE + PAMU_T_POINTER_SIZE, SEEK_SET);
     write(fd, &nextFree, PAMU_T_POINTER_SIZE);
   }
 
   // Update the next free's previous pointer
   if (nextFree) {
-    lseek(fd, ntoh(nextFree) + (1*PAMU_T_MARKER_SIZE), SEEK_SET);
+    lseek(fd, ntoh(nextFree) + PAMU_T_MARKER_SIZE, SEEK_SET);
     write(fd, &previousFree, PAMU_T_POINTER_SIZE);
   }
 
@@ -474,6 +476,7 @@ int pamu_free(int fd, PAMU_T_POINTER addr) {
 
   // Merge with previous block if it's our neighbour
   // Find previous block and it's flags
+  // TODO: check if _pamu_find_previous == ntoh(previousFree)
   PAMU_T_POINTER previousAdjacent = _pamu_find_previous(fd, block, stat->headerSize);
   PAMU_T_MARKER  previousAdjacentFlags, previousAdjacentSize, previousAdjacentMarker;
   if (previousAdjacent >= 0) {
@@ -500,6 +503,7 @@ int pamu_free(int fd, PAMU_T_POINTER addr) {
 
   // Merge with next block if it's our neighbour
   // Find next block and it's flags
+  // TODO: check if _pamu_find_next == ntoh(nextFree)
   PAMU_T_POINTER nextAdjacent = _pamu_find_next(fd, block);
   PAMU_T_MARKER nextAdjacentFlags, nextAdjacentSize;
   if (nextAdjacent < stat->mediumSize) {

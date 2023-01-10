@@ -284,7 +284,7 @@ void test_free_dynamic() {
 }
 
 void test_free_static() {
-  int64_t prev, next;
+  PAMU_T_POINTER prev, next;
 
   // Open tmp file
   char * tempfile = calloc(1,strlen(temptemplate)+strlen(tempfolder)+2);
@@ -312,8 +312,8 @@ void test_free_static() {
   lseek(fd, a0, SEEK_SET);
   read(fd, &prev, PAMU_T_POINTER_SIZE);
   read(fd, &next, PAMU_T_POINTER_SIZE);
-  ASSERT("a0.prev == 0"       , tntoh(prev) == 0);
-  ASSERT("a0.next == a1.outer", tntoh(next) == a1 - PAMU_T_MARKER_SIZE);
+  ASSERT("a0.prev == 0", tntoh(prev) == 0);
+  ASSERT("a0.next == 0", tntoh(next) == 0);
 
   lseek(fd, a1, SEEK_SET);
   read(fd, &prev, PAMU_T_POINTER_SIZE);
@@ -324,8 +324,9 @@ void test_free_static() {
   lseek(fd, a2, SEEK_SET);
   read(fd, &prev, PAMU_T_POINTER_SIZE);
   read(fd, &next, PAMU_T_POINTER_SIZE);
-  ASSERT("a2.prev == a1.outer"        , tntoh(prev) == a1 - PAMU_T_MARKER_SIZE);
-  ASSERT("a2.next == medium.remainder", tntoh(next) == a2 + 64 + PAMU_T_MARKER_SIZE);
+
+  ASSERT("a2.prev == a1.outer"        , tntoh(prev) == (a1 - PAMU_T_MARKER_SIZE));
+  ASSERT("a2.next == medium.remainder", tntoh(next) == (a2 + 64 + PAMU_T_MARKER_SIZE));
 
   // Remove the temporary file
   close(fd);
