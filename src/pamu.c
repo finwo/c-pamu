@@ -290,16 +290,16 @@ PAMU_T_POINTER pamu_alloc(int fd, PAMU_T_MARKER size) {
   PAMU_T_POINTER nextFree;
   PAMU_T_POINTER newFree;
   PAMU_T_MARKER  newFreeSize;
-  PAMU_T_MARKER  newFreeSizeFlags;
+  PAMU_T_MARKER  newFreeMarker;
   PAMU_T_POINTER beBlock = hton(block);
   if ((blockSize - size) > ((2 * PAMU_T_POINTER_SIZE) + (2*PAMU_T_MARKER_SIZE))) {
     lseek(fd, block + PAMU_T_MARKER_SIZE, SEEK_SET);
     read(fd, &previousFree, PAMU_T_POINTER_SIZE);
     read(fd, &nextFree, PAMU_T_POINTER_SIZE);
 
-    newFree          = hton( block     + size + (2 * PAMU_T_MARKER_SIZE));
-    newFreeSize      =          blockSize - size - (2 * PAMU_T_MARKER_SIZE) ;
-    newFreeSizeFlags = hton(newFreeSize | PAMU_INTERNAL_FLAG_FREE);
+    newFree       = hton((PAMU_T_POINTER)(block     + size + (2 * PAMU_T_MARKER_SIZE)));
+    newFreeSize   =          blockSize - size - (2 * PAMU_T_MARKER_SIZE) ;
+    newFreeMarker = hton((PAMU_T_MARKER)(newFreeSize | PAMU_INTERNAL_FLAG_FREE));
 
     // Update the current block
     blockSize   = size;
@@ -308,15 +308,15 @@ PAMU_T_POINTER pamu_alloc(int fd, PAMU_T_MARKER size) {
     write(fd, &blockMarker , PAMU_T_MARKER_SIZE);  // Start marker
     write(fd, &previousFree, PAMU_T_POINTER_SIZE); // Previous free
     write(fd, &newFree     , PAMU_T_POINTER_SIZE); // Next/new free
-    lseek(fd, block + size + PAMU_T_MARKER_SIZE, SEEK_SET);
+    lseek(fd, block + blockSize + PAMU_T_MARKER_SIZE, SEEK_SET);
     write(fd, &blockMarker , PAMU_T_MARKER_SIZE);  // End marker
 
     // Build new free block
-    write(fd, &newFreeSizeFlags, PAMU_T_MARKER_SIZE); // Start marker
-    write(fd, &previousFree    , PAMU_T_POINTER_SIZE); // Previous/current free
-    write(fd, &nextFree        , PAMU_T_POINTER_SIZE); // Next free
+    write(fd, &newFreeMarker, PAMU_T_MARKER_SIZE); // Start marker
+    write(fd, &beBlock      , PAMU_T_POINTER_SIZE); // Previous/current free
+    write(fd, &nextFree     , PAMU_T_POINTER_SIZE); // Next free
     lseek(fd, ntoh(newFree) + newFreeSize + PAMU_T_MARKER_SIZE, SEEK_SET);
-    write(fd, &newFreeSizeFlags, PAMU_T_MARKER_SIZE); // End marker
+    write(fd, &newFreeMarker, PAMU_T_MARKER_SIZE); // End marker
 
     // Update next block to point it's previous to the new free
     if (nextFree) {

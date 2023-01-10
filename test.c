@@ -312,8 +312,9 @@ void test_free_static() {
   lseek(fd, a0, SEEK_SET);
   read(fd, &prev, PAMU_T_POINTER_SIZE);
   read(fd, &next, PAMU_T_POINTER_SIZE);
-  ASSERT("a0.prev == 0", tntoh(prev) == 0);
-  ASSERT("a0.next == 0", tntoh(next) == 0);
+
+  ASSERT("a0.prev == 0"       , tntoh(prev) == 0);
+  ASSERT("a0.next == a1.outer", tntoh(next) == (a1 - PAMU_T_MARKER_SIZE));
 
   lseek(fd, a1, SEEK_SET);
   read(fd, &prev, PAMU_T_POINTER_SIZE);
