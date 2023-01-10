@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    pull_request:
+      - main
+
+jobs:
+
+  test_p32_m32:
+    name: Test 32/32
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run : make clean
+      - run : make "CFLAGS=-DPAMU_T_POINTER=int32_t -DPAMU_T_MARKER=int32_t"
+      - run : ./test
+
+  test_p32_m64:
+    name: Test 32/64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run : make clean
+      - run : make "CFLAGS=-DPAMU_T_POINTER=int32_t -DPAMU_T_MARKER=int64_t"
+      - run : ./test
+
+  test_p64_m32:
+    name: Test 64/32
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run : make clean
+      - run : make "CFLAGS=-DPAMU_T_POINTER=int64_t -DPAMU_T_MARKER=int32_t"
+      - run : ./test
+
+  test_p64_m64:
+    name: Test 64/64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run : make clean
+      - run : make "CFLAGS=-DPAMU_T_POINTER=int64_t -DPAMU_T_MARKER=int64_t"
+      - run : ./test
+
+  test_default:
+    name: Test default
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run : make clean
+      - run : make
+      - run : ./test
