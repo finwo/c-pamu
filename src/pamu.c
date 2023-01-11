@@ -252,7 +252,7 @@ int pamu_init(int fd, uint32_t flags) {
 // Returns inner address or error
 PAMU_T_POINTER pamu_alloc(int fd, PAMU_T_MARKER size) {
   if (size <= 0) return PAMU_ERR_NEGATIVE_SIZE;
-  if (size < (2*PAMU_T_POINTER_SIZE)) size = PAMU_T_POINTER_SIZE;
+  if (size < (2*PAMU_T_POINTER_SIZE)) size = 2*PAMU_T_POINTER_SIZE;
 
   // Fetch info (or return error code)
   struct pamu_medium_stat *stat = _pamu_medium_stat(fd);
