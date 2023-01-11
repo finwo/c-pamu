@@ -109,6 +109,7 @@ void test_init_static() {
 }
 
 void test_alloc_dynamic() {
+  PAMU_T_POINTER expectedLocation = 8 + PAMU_T_MARKER_SIZE;
 
   // Open tmp file
   char * tempfile = calloc(1,strlen(temptemplate)+strlen(tempfolder)+2);
@@ -124,12 +125,26 @@ void test_alloc_dynamic() {
   // 1st allocation
   int64_t addr_0 = pamu_alloc(fd, 64);
   ASSERT("1st allocation does not return an error", addr_0 >  0);
-  ASSERT("1st allocation is done right after the header", addr_0 == (8 + PAMU_T_MARKER_SIZE));
+  ASSERT("1st allocation is done right after the header", addr_0 == expectedLocation);
+  expectedLocation += (2 * PAMU_T_MARKER_SIZE) + 64;
 
   // 2nd allocation
   int64_t addr_1 = pamu_alloc(fd, 64);
   ASSERT("2nd allocation does not return an error", addr_1 > 0);
-  ASSERT("2nd allocation is done right after the 1st alloc", addr_1 == (8 + (3*PAMU_T_MARKER_SIZE) + 64));
+  ASSERT("2nd allocation is done right after the 1st alloc", addr_1 == expectedLocation);
+  expectedLocation += (2 * PAMU_T_MARKER_SIZE) + 64;
+
+  // 3rd allocation
+  int64_t addr_2 = pamu_alloc(fd, PAMU_T_POINTER_SIZE * 3 / 2);
+  ASSERT("3rd allocation does not return an error", addr_2 > 0);
+  ASSERT("3rd allocation is done right after the 2nd alloc", addr_2 == expectedLocation);
+  expectedLocation += (2 * PAMU_T_MARKER_SIZE) + (PAMU_T_POINTER_SIZE * 2);
+
+  // 4th allocation
+  int64_t addr_3 = pamu_alloc(fd, 64);
+  ASSERT("4th allocation does not return an error", addr_3 > 0);
+  ASSERT("4th allocation is done right after the 3rd alloc", addr_3 == expectedLocation);
+  expectedLocation += (2 * PAMU_T_MARKER_SIZE) + 64;
 
   // Remove the temporary file
   close(fd);
