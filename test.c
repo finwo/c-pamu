@@ -1,5 +1,5 @@
 #include "pamu.h"
-#include "test.h"
+#include "finwo/assert.h"
 
 #include <endian.h>
 #include <fcntl.h>

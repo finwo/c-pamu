@@ -3,9 +3,15 @@ LIBS=
 SRC=$(wildcard src/*.c)
 SRC+=test.c
 
-override CFLAGS?=
-override CFLAGS+=-Wall
-override CFLAGS+=-Isrc
+CFLAGS:=
+CFLAGS+=-Wall
+
+INCLUDES:=
+INCLUDES+=-I src
+
+include lib/.dep/config.mk
+
+CFLAGS+=$(INCLUDES)
 
 # Which objects to generate before merging everything together
 OBJ:=$(SRC:.c=.o)
@@ -19,7 +25,7 @@ $(LIBS):
 %.o: %.c $(LIBS)
 	$(CC) $(CFLAGS) $(@:.o=.c) -c -o $@
 
-test: $(OBJ) test.h
+test: $(OBJ)
 	$(CC) $(CFLAGS) $(OBJ) -o $@
 
 .PHONY: clean
