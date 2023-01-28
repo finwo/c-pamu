@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: finwo/dep
+      - run : dep install
       - run : make clean
       - run : make "CFLAGS=-DPAMU_T_POINTER=int32_t -DPAMU_T_MARKER=int32_t"
       - run : ./test
@@ -23,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: finwo/dep
+      - run : dep install
       - run : make clean
       - run : make "CFLAGS=-DPAMU_T_POINTER=int32_t -DPAMU_T_MARKER=int64_t"
       - run : ./test
@@ -32,6 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: finwo/dep
+      - run : dep install
       - run : make clean
       - run : make "CFLAGS=-DPAMU_T_POINTER=int64_t -DPAMU_T_MARKER=int32_t"
       - run : ./test
@@ -41,6 +47,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: finwo/dep
+      - run : dep install
       - run : make clean
       - run : make "CFLAGS=-DPAMU_T_POINTER=int64_t -DPAMU_T_MARKER=int64_t"
       - run : ./test
@@ -50,6 +58,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: finwo/dep
+      - run : dep install
       - run : make clean
       - run : make
       - run : ./test
