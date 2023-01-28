@@ -3,15 +3,14 @@ LIBS=
 SRC=$(wildcard src/*.c)
 SRC+=test.c
 
-CFLAGS:=
-CFLAGS+=-Wall
+override CFLAGS?=-Wall
 
 INCLUDES:=
 INCLUDES+=-I src
 
 include lib/.dep/config.mk
 
-CFLAGS+=$(INCLUDES)
+override CFLAGS+=$(INCLUDES)
 
 # Which objects to generate before merging everything together
 OBJ:=$(SRC:.c=.o)
